@@ -5,10 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -23,103 +19,53 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
 
-      - name: Install Python dependencies
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # ---- BUILD BLOG (publish.py) ----
-      - name: Build blog with publish.py
+      # publish.py PHẢI ghi thẳng vào _public/blog/
+      - name: Build site with publish.py (writes to _public/blog)
         env:
-          # nếu blog của bạn cần base url /blog/
           BASE_URL: /blog/
         run: |
-          # Không fail cả job nếu publish.py không sinh gì (để còn in debug)
-          python publish.py || true
+          set -euxo pipefail
+          python publish.py
+          echo "== DEBUG: list _public/blog =="
+          (find _public/blog -maxdepth 2 -type f | sed 's/^/  /') || true
 
-          echo "== DEBUG after publish.py =="
-          # In 3 tầng để kiểm tra site/ và _public nếu có
-          find . -maxdepth 3 -type f -print | sed 's/^/  /' || true
-
-      # ---- RÁP OUTPUT THÀNH _public ----
-      - name: Assemble final output to _public
-        shell: bash
+      # KHÔNG XÓA _public! Chỉ thêm phần bổ sung
+      - name: Assemble static extras (do NOT delete _public)
         run: |
           set -euxo pipefail
+          test -f _public/blog/index.html || (echo "ERROR: _public/blog/index.html not found; check publish.py" && exit 1)
 
-          # Tìm nguồn blog: ưu tiên site/blog -> site -> _public/blog
-          BLOG_SRC=""
-          if [ -d site/blog ] && [ -n "$(find site/blog -type f | head -1)" ]; then
-            BLOG_SRC="site/blog"
-          elif [ -d site ] && [ -n "$(find site -type f | head -1)" ]; then
-            BLOG_SRC="site"
-          elif [ -d _public/blog ] && [ -n "$(find _public/blog -type f | head -1)" ]; then
-            BLOG_SRC="_public/blog"
-          fi
-
-          if [ -z "$BLOG_SRC" ]; then
-            echo "::error ::Blog build not found (no files in site/blog, site, or _public/blog)"
-            exit 1
-          fi
-
-          # Bắt đầu ráp _public
-          rm -rf _public || true
-          mkdir -p _public/blog
-
-          # Copy blog vào /blog
-          if [ "$BLOG_SRC" = "site/blog" ]; then
-            shopt -s nullglob dotglob
-            cp -r site/blog/* _public/blog/
-            shopt -u nullglob dotglob
-          elif [ "$BLOG_SRC" = "site" ]; then
-            shopt -s nullglob dotglob
-            cp -r site/* _public/blog/
-            shopt -u nullglob dotglob
-          else
-            # BLOG_SRC đã là _public/blog (được giữ nguyên)
-            :
-          fi
-
-          # Coming Soon -> /coming-soon  (nếu có)
+          # Copy coming-soon nếu có
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
-            shopt -s nullglob dotglob
-            cp -r coming-soon/* _public/coming-soon/
-            shopt -u nullglob dotglob
-          elif [ -d coming_soon ]; then
-            mkdir -p _public/coming-soon
-            shopt -s nullglob dotglob
-            cp -r coming_soon/* _public/coming-soon/
-            shopt -u nullglob dotglob
+            rsync -a coming-soon/ _public/coming-soon/
           fi
 
-          # Contact -> /contact (nếu có)
+          # Copy contact nếu có
           if [ -d contact ]; then
             mkdir -p _public/contact
-            shopt -s nullglob dotglob
-            cp -r contact/* _public/contact/
-            shopt -u nullglob dotglob
+            rsync -a contact/ _public/contact/
           fi
 
-          # Trang gốc: trỏ thẳng vào blog (nếu muốn trang chủ vào blog)
-          # Nếu bạn muốn trang chủ là coming-soon thì đổi /blog/ -> /coming-soon/
-          echo '<meta http-equiv="refresh" content="0;url=/blog/">' > _public/index.html
+          # Root -> /coming-soon/ (phục vụ domain apex)
+          printf '%s\n' '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
 
           echo "== TREE _public =="
-          find _public -maxdepth 3 -type f -print | sed 's/^/  /'
+          find _public -maxdepth 3 -print | sed 's/^/  /'
 
-      # (tuỳ chọn) Upload artifact để debug sau job
       - name: Upload _public artifact (debug)
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: public
           path: _public
 
-      # ---- DEPLOY LÊN CLOUDFLARE PAGES ----
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
