@@ -1,9 +1,9 @@
 // functions/[[path]].js
-// Cloudflare Pages Functions — Normalizer/Router
+// Router cho Cloudflare Pages
 
-const BLOG_HOSTS = ['blog.cachemissed.lol'];               // blog subdomain
-const COMING_HOSTS = ['cs.cachemissed.lol', 'comingsoon.cachemissed.lol']; // nếu bạn dùng subdomain cho Coming Soon
-const APEX_HOST = 'cachemissed.lol';                       // domain gốc
+const BLOG_HOSTS   = ['blog.cachemissed.lol'];                 // subdomain blog
+const APEX_HOST    = 'cachemissed.lol';                        // domain gốc (trang coming soon)
+const COMING_HOSTS = ['cs.cachemissed.lol', 'comingsoon.cachemissed.lol']; // nếu bạn dùng subdomain coming soon
 
 export async function onRequest(context) {
   const req = context.request;
@@ -11,19 +11,27 @@ export async function onRequest(context) {
   const host = url.hostname;
   const path = url.pathname;
 
-  // --- 1) Blog subdomain: loại bỏ tiền tố /blog để tránh /blog/blog/ ---
+  // === BLOG SUBDOMAIN ===
   if (BLOG_HOSTS.includes(host)) {
-    // Nếu URL đang là /blog hoặc bắt đầu bằng /blog/... => bóc /blog và 301
+    // 1) Nếu lỡ vào /blog hoặc /blog/... -> bóc /blog và 301 về URL sạch
     if (path === '/blog' || path.startsWith('/blog/')) {
       url.pathname = path.replace(/^\/blog(\/|$)/, '/');
-      // Bảo toàn query-string
       return Response.redirect(url.toString(), 301);
     }
-    // Không động vào những request hợp lệ khác của blog
-    return context.next();
+
+    // 2) Map nội bộ mọi đường dẫn của blog tới /blog/... trong asset tĩnh
+    //    - "/"  -> "/blog/index.html"
+    //    - "/feed.xml" -> "/blog/feed.xml"
+    //    - "/category/abc.html" -> "/blog/category/abc.html", v.v.
+    const mapped = path === '/' || path === ''
+      ? '/blog/index.html'
+      : `/blog${path.endsWith('/') ? `${path}index.html` : path}`;
+
+    const mappedURL = new URL(mapped, url);
+    return fetch(new Request(mappedURL.toString(), req));
   }
 
-  // --- 2) Apex: chỉ route trang chủ "/" sang /coming-soon/ để tránh reload loop ---
+  // === APEX: chỉ route TRANG CHỦ sang coming-soon để tránh loop ===
   if (host === APEX_HOST) {
     if (path === '/' || path === '') {
       url.pathname = '/coming-soon/';
@@ -32,7 +40,7 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  // --- 3) (Tuỳ chọn) Subdomain Coming Soon: trang chủ -> /coming-soon/ ---
+  // === (Tuỳ chọn) Subdomain Coming Soon: trang chủ -> /coming-soon/ ===
   if (COMING_HOSTS.includes(host)) {
     if (path === '/' || path === '') {
       url.pathname = '/coming-soon/';
@@ -41,6 +49,6 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  // --- Mặc định: để Pages tự trả asset tĩnh ---
+  // Mặc định: để Pages tự phục vụ asset
   return context.next();
 }

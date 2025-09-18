@@ -5,8 +5,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Tránh chạy chồng khi push liên tiếp
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  build-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,7 +31,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Build blog with publish.py
+      - name: Build blog with publish.py (BASE_URL=/blog/)
         env:
           BASE_URL: /blog/
         run: |
@@ -34,35 +39,45 @@ jobs:
 
       - name: Assemble final output to _public
         run: |
-          rm -rf _public && mkdir -p _public
-
-          # Blog -> /blog
+          set -eux
+          rm -rf _public
           mkdir -p _public/blog
-          cp -r site/* _public/blog/ 2>/dev/null || true
+
+          # Blog -> /blog  (publish.py sinh ra vào ./site)
+          if [ -d site ]; then
+            rsync -a --delete site/ _public/blog/
+          fi
 
           # Coming Soon -> /coming-soon  (tự nhận coming-soon/ hoặc coming_soon/)
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
-            cp -r coming-soon/* _public/coming-soon/
+            rsync -a coming-soon/ _public/coming-soon/
           elif [ -d coming_soon ]; then
             mkdir -p _public/coming-soon
-            cp -r coming_soon/* _public/coming-soon/
+            rsync -a coming_soon/ _public/coming-soon/
           fi
 
           # Contact -> /contact (nếu có)
           if [ -d contact ]; then
             mkdir -p _public/contact
-            cp -r contact/* _public/contact/
+            rsync -a contact/ _public/contact/
           fi
 
-          # Root: redirect về /coming-soon/
-          echo '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
+          # Root: redirect về /coming-soon/ (áp dụng cho mọi host)
+          cat > _public/index.html <<'HTML'
+          <!doctype html>
+          <meta http-equiv="refresh" content="0;url=/coming-soon/">
+          HTML
 
-      - name: Publish to Cloudflare Pages
+          echo "=== _public tree ==="
+          find _public -maxdepth 2 -type f | sort
+
+      - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           projectName: cachemissed
           directory: _public
+          wranglerVersion: '3'
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
