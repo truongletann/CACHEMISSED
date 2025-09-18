@@ -1,130 +1,62 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Static publisher for a dual-host site:
-- Blog at /blog/ (with header/footer hard-coded here)
-- Coming Soon at /coming-soon/ (copied as-is from your existing code)
-- Host router at / (index.html) to switch by hostname
-- Also builds posts, category pages, feed.xml, sitemap.xml, index.json
-
-ENV VARS (optional but recommended):
-  BASE_URL=/                      # or /repo/ for GitHub project pages
-  SITE_URL=https://cachemissed.lol
-  BRAND="CacheMissed Blog"
-  APEX_HOST=cachemissed.lol
-  BLOG_HOST=blog.cachemissed.lol
-  COMING_SOON_SRC=coming_soon     # source folder that contains your coming soon code
-"""
-
-import os, re, shutil, datetime, json
+import os, re, json, shutil, datetime
 from pathlib import Path
 from urllib.parse import urljoin
 import frontmatter, markdown
 from slugify import slugify
-from jinja2 import Template
 
-# ---------- Paths & Config ----------
-ROOT = Path(__file__).resolve().parent
+# ================== CẤU HÌNH ĐẦU RA ==================
+ROOT       = Path(__file__).resolve().parent
+OUT_ROOT   = ROOT / "_public"              # Cloudflare Pages output
+BLOG_DIR   = OUT_ROOT / "blog"             # Blog root (được mount làm "/" nhờ Pages Functions)
+COMING_DIR = OUT_ROOT / "coming-soon"      # Coming soon site
+CONTACT_DIR= OUT_ROOT / "contact"          # (tuỳ chọn)
 
-POSTS     = ROOT / "posts"
-IMAGES    = ROOT / "images"
-TEMPL     = ROOT / "templates"          # index_body.html, post_body.html, category_body.html
-ASSETS    = ROOT / "assets"             # assets/css/*, assets/js/*
-COMING_SRC= ROOT / os.environ.get("COMING_SOON_SRC", "coming_soon")
+# Input
+POSTS      = ROOT / "posts"
+IMAGES     = ROOT / "images"
+ASSETS     = ROOT / "assets"               # assets/css | assets/js
+TEMPLATES  = ROOT / "templates"            # index_body.html | post_body.html | category_body.html
 
-SITE      = ROOT / "site"
-OUT_POSTS = SITE / "posts"
-CAT_DIR   = SITE / "category"
-BLOG_DIR  = SITE / "blog"
-COMING_DIR= SITE / "coming-soon"
+# Thông tin site
+BRAND      = os.environ.get("BRAND", "CacheMissed Blog")
+BASE_URL   = "/"                           # vì Pages Functions mount blog thành "/"
+YEAR_NOW   = datetime.date.today().year
 
-BASE_URL  = os.environ.get("BASE_URL", "/").rstrip("/") + "/"
-SITE_URL  = os.environ.get("SITE_URL", "").rstrip("/")          # absolute base for canonical/RSS
-BRAND     = os.environ.get("BRAND", "CacheMissed Blog")
-APEX_HOST = os.environ.get("APEX_HOST", "cachemissed.lol")
-BLOG_HOST = os.environ.get("BLOG_HOST", "blog.cachemissed.lol")
-
-YEAR = datetime.date.today().year
-
-for d in [SITE, OUT_POSTS, CAT_DIR, BLOG_DIR, COMING_DIR]:
+# Tạo sẵn thư mục đích
+for d in [OUT_ROOT, BLOG_DIR, COMING_DIR, CONTACT_DIR, BLOG_DIR/"posts", BLOG_DIR/"category", BLOG_DIR/"css", BLOG_DIR/"js", BLOG_DIR/"images"]:
     d.mkdir(parents=True, exist_ok=True)
 
 
-# ---------- Utils ----------
-def read_text(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
-
-def write_text(p: Path, txt: str):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(txt, encoding="utf-8")
-
-def ensure_assets():
-    # copy assets/css -> site/css ; assets/js -> site/js
-    for sub in ("css", "js"):
-        src = ASSETS / sub
-        if not src.exists(): continue
-        dst = SITE / sub
-        for f in src.rglob("*"):
-            if f.is_file():
-                out = dst / f.relative_to(src)
-                out.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(f, out)
-
-def copy_images():
-    if not IMAGES.exists(): return
-    dst = SITE / "images"
-    for p in IMAGES.rglob("*"):
-        if p.is_file():
-            out = dst / p.relative_to(IMAGES)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, out)
-
-def parse_date(meta_date, name_hint):
-    if meta_date:
-        return datetime.date.fromisoformat(str(meta_date)[:10])
-    m = re.search(r"(\d{4})[-_](\d{2})[-_](\d{2})", name_hint)
-    if m:
-        y, mo, d = map(int, m.groups())
-        return datetime.date(y, mo, d)
-    return datetime.date.today()
-
-def human(d): return d.strftime("%Y %b %d")
-
-def collect_categories(meta):
-    cats=[]
-    if meta.get("category"): cats.append(str(meta["category"]))
-    if meta.get("categories"):
-        c = meta["categories"]
-        cats += ([c] if isinstance(c, str) else list(c))
-    return [x.strip() for x in cats if str(x).strip()]
-
-
-# ---------- Header / Footer (hard-coded) ----------
-def header_html(base: str, crumb_title: str | None = None) -> str:
+# ================== HTML SHELL (HEADER/FOOTER) ==================
+def header_html(brand_text: str, page_class: str, crumb_title: str|None=None) -> str:
+    """Header sticky, nhỏ gọn; search là icon (trên mobile giống yêu cầu)."""
+    # Breadcrumb: / [icon] Tên bài (nếu có)
     doc_svg = """<svg class="docico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>"""
-    crumb = f'<span class="brand-path"> <span class="sep">/</span> {doc_svg}<span class="crumb-txt">{crumb_title}</span></span>' if crumb_title else ""
+    crumb = f'<span class="brand-path"><span class="sep">/</span> {doc_svg}<span class="crumb-txt">{crumb_title}</span></span>' if crumb_title else ""
     return f"""
 <header class="site-head">
   <div class="head-inner">
-    <a class="brand" href="{base}">
-      <img class="logo logo-light" src="{BASE_URL}images/logo-light.png" alt="logo">
-      <img class="logo logo-dark"  src="{BASE_URL}images/logo-dark.png"  alt="logo">
-      <span class="txt">{BRAND}</span>
+    <a class="brand" href="/">
+      <img class="logo logo-light" src="/images/logo-light.png" alt="logo">
+      <img class="logo logo-dark"  src="/images/logo-dark.png"  alt="logo">
+      <span class="txt">{brand_text}</span>
     </a>
     {crumb}
     <div class="spacer"></div>
-    <label class="search" role="search" aria-label="Search site">
-      <input id="q" placeholder="Search posts…" autocomplete="off">
-      <button type="button" class="s-clear" id="qClear" aria-label="Clear">✕</button>
-      <button type="button" class="s-ico-btn" id="qIcon" aria-label="Search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="11" cy="11" r="7"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-      </button>
-    </label>
+
+    <!-- search: icon-only trên màn nhỏ -->
+    <button class="s-ico-btn" id="miniSearch" aria-label="Search" title="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+    </button>
+
+    <!-- theme toggle -->
     <button class="theme" id="themeToggle" type="button" aria-pressed="false" title="Toggle theme">
       <span class="label label-dark">DARK</span>
       <span class="track"><span class="knob"></span></span>
@@ -135,242 +67,349 @@ def header_html(base: str, crumb_title: str | None = None) -> str:
 """
 
 def footer_html() -> str:
-    return f"""
-<footer class="site-footer" role="contentinfo">
-  <div class="inner">© {YEAR} CacheMissed</div>
+    return f"""<footer class="site-foot">
+  <p>© {YEAR_NOW} CacheMissed</p>
 </footer>"""
 
-# ---------- Page shell (wrap body template) ----------
-from jinja2 import Template  # đảm bảo còn import này ở đầu file
+def render_shell(title: str, body: str, page_class: str, canonical: str|None=None,
+                 css_name: str|None=None, js_name: str|None=None, crumb: str|None=None) -> str:
+    """Khung HTML hoàn chỉnh: chèn header/footer + CSS/JS theo trang."""
+    # css theo trang (index.css | post.css | category.css)
+    css_links = [
+        '<link rel="stylesheet" href="/css/base.css">',
+    ]
+    if css_name:
+        css_links.append(f'<link rel="stylesheet" href="/css/{css_name}">')
 
-SHELL = Template("""<!doctype html>
+    # js dùng chung + theo trang
+    js_links = ['<script defer src="/js/common.js"></script>']
+    if js_name:
+        js_links.append(f'<script defer src="/js/{js_name}"></script>')
+
+    head_extra = f'<link rel="canonical" href="{canonical}">' if canonical else ""
+
+    return f"""<!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title }}</title>
-<link rel="canonical" href="{{ canonical }}">
-<link rel="stylesheet" href="{{ base }}css/base.css">
-{% for href in page_css %}<link rel="stylesheet" href="{{ base }}css/{{ href }}">{% endfor %}
-</head><body class="{{ body_class }}">
-{{ header | safe }}
-{{ body | safe }}
-{{ footer | safe }}
-<script src="{{ base }}js/common.js"></script>
-{% for src in page_js %}<script src="{{ base }}js/{{ src }}"></script>{% endfor %}
-</body></html>""")
-
-def render_shell(*, title:str, canonical:str, body_class:str, base:str,
-                 header:str, body:str, page_css:list[str], page_js:list[str]) -> str:
-    return SHELL.render(
-        title=title, canonical=canonical or "",
-        base=base, header=header, body=body, footer=footer_html(),
-        body_class=body_class, page_css=page_css, page_js=page_js,
-    )
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+{head_extra}
+{''.join(css_links)}
+</head>
+<body class="{page_class}">
+{header_html(BRAND, page_class, crumb)}
+{body}
+{footer_html()}
+{''.join(js_links)}
+</body></html>"""
 
 
+# ================== CSS BASE ==================
+# (Giữ tinh gọn; palette xanh/vàng theo yêu cầu, header sticky, footer center)
+BASE_CSS = r"""
+:root{
+  --brand:#2563eb;       /* xanh link (blue-600) */
+  --accent:#f5d26b;      /* vàng */
+  --ink:#0b1320; --muted:#6b7280; --rule:#e5e7eb; --bg:#ffffff;
+  --d-bg:#0a0a0a; --d-ink:#f5d26b; --d-muted:#9c7f2b; --d-rule:#1f2937; --d-link:#ffd166;
+  --w: clamp(640px, 86vw, 820px);
+  --head-h: 60px;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); }
+}
+:root[data-theme="light"]{ --ink:#0b1320; --muted:#6b7280; --rule:#e5e7eb; --bg:#fff; }
+:root[data-theme="dark"]{ --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); }
 
-# ---------- Build: posts / categories ----------
-def render_post(md_path: Path, slug_hint: str, entries: list, cats_map: dict):
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif}
+a{color:#1f6feb} img{max-width:100%;height:auto}
+
+/* header */
+.site-head{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--rule)}
+.head-inner{max-width:1200px;margin:0 auto;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:600;min-width:0}
+.brand .logo{width:28px;height:28px;display:block;flex:0 0 auto}
+.brand .logo-dark{display:none}
+:root[data-theme="dark"] .brand .logo-dark{display:block}
+:root[data-theme="dark"] .brand .logo-light{display:none}
+.brand .txt{display:block;max-width:30vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-path{display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:700}
+.brand-path .crumb-txt{color:var(--ink);max-width:36vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spacer{flex:1 1 auto}
+.s-ico-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;border:0;background:transparent;cursor:pointer;color:#4c1d95}
+
+/* theme */
+.theme{display:inline-flex;align-items:center;gap:10px;border:0;background:none;cursor:pointer;padding:0}
+.theme .label{font-weight:800;letter-spacing:.08em;font-size:12px;color:var(--muted);opacity:.35;transition:opacity .25s ease,color .25s ease}
+:root[data-theme="light"] .theme .label-light{color:var(--ink);opacity:1}
+:root[data-theme="dark"]  .theme .label-dark{color:var(--ink);opacity:1}
+.theme .track{position:relative;width:58px;height:28px;border-radius:999px;background:#e9edf3;border:1px solid var(--rule)}
+.theme .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%}
+:root[data-theme="light"] .theme .knob{background:#ffd166;box-shadow:inset 0 0 0 2px rgba(0,0,0,.06);transform:translateX(28px)}
+:root[data-theme="dark"] .theme .knob{background:transparent}
+
+/* common layout */
+main{max-width:var(--w); margin:24px auto; padding:0 16px}
+h1{font-size:28px;margin:8px 0 12px}
+.hr{height:1px;background:var(--rule);margin:12px 0}
+footer.site-foot{max-width:var(--w);margin:30px auto 50px;padding:0 16px;color:var(--muted);font-size:14px;text-align:center}
+footer.site-foot p{margin:0}
+
+/* index + category: list item */
+.post{ margin:18px 0 24px; text-align:left; }
+.post .date{ color:var(--muted); font-size:13px; margin:0 0 6px; letter-spacing:.2px; }
+.post h2{ margin:0 0 8px; font-size:clamp(20px, 2.2vw + .4rem, 28px); line-height:1.3; }
+.post h2 a{ color:#1f6feb; text-decoration:none; }
+.post h2 a:hover{ text-decoration:underline; }
+@media (max-width:640px){
+  .post{ margin:14px 0 20px; }
+  .post .date{ font-size:12.5px; }
+}
+
+/* pills: trung tâm; mobile cuộn ngang */
+.catbar{max-width:var(--w);margin:10px auto 0;padding:0 16px}
+.pills{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;justify-content:center;margin:0;padding:6px 0;overflow:auto;scroll-snap-type:x proximity}
+.pill{
+  display:inline-flex;align-items:center;white-space:nowrap;scroll-snap-align:start;
+  height:36px;padding:0 14px;border-radius:999px;background:#f2f3f8;color:#111;
+  font-weight:700;font-size:13.5px;letter-spacing:.2px;box-shadow:0 1px 0 0 var(--rule) inset,0 1px 6px rgba(0,0,0,.04);
+  transition:background .15s, transform .12s, box-shadow .15s;
+}
+.pill:hover{ background:rgba(127,75,235,.10); transform:translateY(-1px); }
+.pill.is-active{ background:rgba(127,75,235,.16); box-shadow:0 0 0 2px rgba(127,75,235,.14) inset; }
+@media (max-width:680px){ .pills{flex-wrap:nowrap;justify-content:flex-start} }
+
+/* post page: TOC trái */
+.post-wrap{ max-width:1200px;margin:24px auto;padding:0 18px;display:grid;grid-template-columns:260px 1fr;gap:28px }
+.toc{ position:sticky; top:calc(var(--head-h) + 18vh); align-self:start; max-height: calc(100vh - var(--head-h) - 18vh - 20px);
+  overflow:auto; padding-left:10px; border-left:2px solid var(--rule); font-size:13px; line-height:1.35; color:var(--muted) }
+.toc .toc-title{font-weight:700;color:var(--ink);margin:0 0 6px}
+.toc a{color:var(--muted);text-decoration:none}
+.toc a:hover{color:#1f6feb;text-decoration:underline}
+.toc .lvl-2{padding-left:10px}.toc .lvl-3{padding-left:18px}
+.toc-tools{margin-top:8px;border-top:1px solid var(--rule);padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.toc-tools a{color:var(--muted);text-decoration:none;font-size:12.5px}
+@media (max-width:1024px){ .post-wrap{display:block} .toc{border:0;border-top:1px solid var(--rule);padding:10px 0;max-width:var(--w);margin:0 auto 12px} }
+
+/* dark mode moon icon bold */
+:root[data-theme="dark"] .theme .knob::after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);
+  background-repeat:no-repeat;background-position:center;background-size:20px 20px;filter: drop-shadow(0 0 1px rgba(0,0,0,.45));
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23f5d26b' stroke='%23000000' stroke-width='1.6'/></svg>");}
+"""
+
+
+# ================== TIỆN ÍCH ==================
+def read_text(p: Path) -> str:
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+def write_text(p: Path, s: str):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(s, encoding="utf-8")
+
+def copy_tree(src: Path, dst: Path):
+    if not src.exists(): return
+    for p in src.rglob("*"):
+        if p.is_file():
+            rel = p.relative_to(src)
+            (dst/rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, dst/rel)
+
+def parse_date(meta_date, name_hint: str) -> datetime.date:
+    if meta_date:
+        return datetime.date.fromisoformat(str(meta_date)[:10])
+    m = re.search(r"(\d{4})[-_](\d{2})[-_](\d{2})", name_hint)
+    if m:
+        y,mo,d = map(int,m.groups()); return datetime.date(y,mo,d)
+    return datetime.date.today()
+
+def human(d: datetime.date) -> str:
+    return d.strftime("%Y %b %d")
+
+def collect_categories(meta) -> list[str]:
+    cats=[]
+    if meta.get("category"): cats.append(str(meta["category"]))
+    if meta.get("categories"):
+        c = meta["categories"]
+        if isinstance(c, str): cats.append(c)
+        else: cats.extend([str(x) for x in c])
+    return [x.strip() for x in cats if str(x).strip()]
+
+
+# ================== RENDER TỪ TEMPLATES ==================
+# body templates (không gồm <html>…>)
+TPL_INDEX_BODY    = read_text(TEMPLATES/"index_body.html")
+TPL_POST_BODY     = read_text(TEMPLATES/"post_body.html")
+TPL_CATEGORY_BODY = read_text(TEMPLATES/"category_body.html")
+
+def render_index_body(posts: list[dict], pills: list[dict]) -> str:
+    """Dùng template index_body.html (có placeholder {{...}} kiểu rất đơn giản)."""
+    # Thay bằng render thủ công cho chắc (tránh phụ thuộc jinja). Template có các marker:
+    # {{PILLS}} -> HTML các pill
+    # {{POSTS}} -> HTML list bài
+    pill_html = "".join([f'<a class="pill" href="{p["href"]}">{p["label"]}</a>' for p in pills])
+    posts_html = "".join([
+        f'<article class="post"><div class="date">{e["date_human"]}</div>'
+        f'<h2><a href="{e["url"]}">{e["title"]}</a></h2></article>'
+        for e in posts
+    ])
+    body = TPL_INDEX_BODY
+    body = body.replace("{{PILLS}}", pill_html)
+    body = body.replace("{{POSTS}}", posts_html)
+    return body
+
+def render_post_body(title: str, date_human: str, category: str|None, content_html: str) -> str:
+    body = TPL_POST_BODY
+    body = body.replace("{{TITLE}}", title)
+    body = body.replace("{{DATE_HUMAN}}", date_human)
+    body = body.replace("{{CATEGORY}}", category or "")
+    body = body.replace("{{CONTENT}}", content_html)
+    return body
+
+def render_category_body(cat_name: str, posts: list[dict], pills: list[dict]) -> str:
+    pill_html  = "".join([f'<a class="pill" href="{p["href"]}">{p["label"]}</a>' for p in pills])
+    posts_html = "".join([
+        f'<article class="post"><div class="date">{e["date_human"]}</div>'
+        f'<h2><a href="{e["url"]}">{e["title"]}</a></h2></article>'
+        for e in posts
+    ])
+    body = TPL_CATEGORY_BODY
+    body = body.replace("{{CAT_NAME}}", cat_name)
+    body = body.replace("{{PILLS}}", pill_html)
+    body = body.replace("{{POSTS}}", posts_html)
+    return body
+
+
+# ================== BUILD BLOG ==================
+def build_assets():
+    # CSS/JS từ assets → BLOG_DIR
+    write_text(BLOG_DIR/"css"/"base.css", BASE_CSS)
+    copy_tree(ASSETS/"css", BLOG_DIR/"css")
+    copy_tree(ASSETS/"js",  BLOG_DIR/"js")
+    # images → BLOG_DIR/images
+    copy_tree(IMAGES, BLOG_DIR/"images")
+
+def render_post(md_path: Path, entries: list, cats_map: dict):
     fm = frontmatter.load(md_path)
-    html_md = markdown.markdown(fm.content, extensions=["extra","toc","tables","codehilite"])
+    html = markdown.markdown(fm.content, extensions=["extra","toc","tables","codehilite"])
     title = fm.get("title") or md_path.stem.replace("-"," ").title()
     d = parse_date(fm.get("date"), md_path.as_posix())
     date_human = human(d)
-    slug = fm.get("slug") or slugify(slug_hint or title)
-    out = OUT_POSTS / f"{slug}.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
+    slug = fm.get("slug") or slugify(md_path.stem)
+    out = BLOG_DIR/"posts"/f"{slug}.html"
     cats = collect_categories(fm.metadata)
     main_cat = cats[0] if cats else None
+    post_url = f"/posts/{out.name}"
 
-    rel_url = f"/posts/{out.name}"
-    abs_url = (SITE_URL + rel_url) if SITE_URL else None
-    page_url = abs_url or (BASE_URL + "posts/" + out.name)
+    # add vào map
+    for c in cats:
+        cats_map.setdefault(c, []).append({"title":title, "date":d, "date_human":date_human, "url":post_url})
 
-    body_tpl = Template(read_text(TEMPL / "post_body.html"))
-    body_html = body_tpl.render(
-        title=title, date_human=date_human, category=main_cat, content=html_md, base=BASE_URL
-    )
-
+    # body & shell
+    body = render_post_body(title, date_human, main_cat, html)
     page_html = render_shell(
         title=title,
-        canonical=abs_url or urljoin(BASE_URL, f"posts/{out.name}"),
-        body_class="no-search",
-        base=BASE_URL,
-        header=header_html(BASE_URL + "blog/", crumb_title=title),  # brand → /blog/
-        body=body_html,
-        page_css=["post.css"],
-        page_js=["post.js"],
+        body=body,
+        page_class="page-post no-search",
+        canonical=urljoin(BASE_URL, f"posts/{out.name}"),
+        css_name="post.css",
+        js_name="post.js",
+        crumb=title
     )
     write_text(out, page_html)
 
-    entries.append({"title": title, "date": d, "date_human": date_human,
-                    "url": page_url, "categories": cats})
-    for c in cats:
-        cats_map.setdefault(c, []).append({"title": title, "date": d, "date_human": date_human, "url": page_url})
+    entries.append({"title":title, "date":d, "date_human":date_human, "url":post_url, "categories":cats})
 
+def build_blog():
+    build_assets()
+    entries=[]; cats_map={}
+    # quét posts
+    for p in POSTS.rglob("*.md"):
+        render_post(p, entries, cats_map)
 
-def build_index(entries, pills):
-    body_tpl = Template(read_text(TEMPL / "index_body.html"))
-    body = body_tpl.render(posts=entries, pills=pills, base=BASE_URL)
-    html = render_shell(
+    # sort mới nhất
+    entries.sort(key=lambda x:x["date"], reverse=True)
+
+    # pills theo category
+    unique_cats = sorted({c for e in entries for c in e["categories"]}) if entries else []
+    pills = [{"href": f"/category/{slugify(c)}.html", "label": c} for c in unique_cats]
+
+    # index
+    index_body = render_index_body(entries, pills)
+    index_html = render_shell(
         title=BRAND,
-        canonical=(SITE_URL or "").rstrip("/") + "/blog/" if SITE_URL else BASE_URL + "blog/",
-        body_class="page-index",
-        base=BASE_URL,
-        header=header_html(BASE_URL + "blog/"),
-        body=body,
-        page_css=["index.css"],
-        page_js=["index.js"],
+        body=index_body,
+        page_class="page-index",
+        css_name="index.css",
+        js_name="index.js"
     )
-    write_text(BLOG_DIR / "index.html", html)
+    write_text(BLOG_DIR/"index.html", index_html)
 
-
-def build_category(cat_name, posts, pills):
-    body_tpl = Template(read_text(TEMPL / "category_body.html"))
-    current_cat_href = f"{BASE_URL}category/{slugify(cat_name)}.html"
-    body = body_tpl.render(posts=posts, pills=pills, base=BASE_URL,
-                           current_cat_href=current_cat_href)
-
-    html = render_shell(
-        title=f"{cat_name} · {BRAND}",
-        canonical=(SITE_URL + f"/category/{slugify(cat_name)}.html") if SITE_URL
-                  else f"{BASE_URL}category/{slugify(cat_name)}.html",
-        body_class="page-index page-category",      # dùng lại toàn bộ style của index
-        base=BASE_URL,
-        header=header_html(BASE_URL + "blog/"),
-        body=body,
-        page_css=["index.css"],                     # index.css là chính
-        page_js=["index.js"],
-    )
-    (CAT_DIR / f"{slugify(cat_name)}.html").write_text(html, encoding="utf-8")
-
-# ---------- Coming Soon (copy as-is to /coming-soon/) ----------
-def build_coming_soon():
-    if not COMING_SRC.exists():
-        print(f"[coming-soon] Source not found: {COMING_SRC}")
-        return
-    # copy everything preserving structure
-    for p in COMING_SRC.rglob("*"):
-        if p.is_file():
-            out = COMING_DIR / p.relative_to(COMING_SRC)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, out)
-    # if there's no index.html inside source root, try to locate one and place as index
-    if not (COMING_DIR / "index.html").exists():
-        # find an html file to become index
-        candidates = list(COMING_DIR.rglob("*.html"))
-        if candidates:
-            shutil.copy2(candidates[0], COMING_DIR / "index.html")
-    print(f"[coming-soon] Copied → {COMING_DIR}")
-
-
-# ---------- Router at / (index.html) ----------
-def build_host_router():
-    router = f"""<!doctype html><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Loading…</title>
-<script>
-(function(){{
-  var h = (location.hostname || "").toLowerCase();
-  var apex = "{APEX_HOST}".toLowerCase();
-  var blog = "{BLOG_HOST}".toLowerCase();
-  if (h === blog) {{
-    location.replace("{BASE_URL}blog/");
-  }} else if (h === apex) {{
-    location.replace("{BASE_URL}coming-soon/");
-  }} else {{
-    location.replace("{BASE_URL}blog/");
-  }}
-}})();
-</script>
-<noscript>
-  <meta http-equiv="refresh" content="0; url={BASE_URL}blog/">
-</noscript>
-"""
-    write_text(SITE / "index.html", router)
-
-
-# ---------- Feed, sitemap, index.json ----------
-def build_rss_and_maps(entries, cats_map):
-    # RSS
-    items=[]
-    home_link = SITE_URL or BASE_URL
-    for e in entries[:50]:
-        link = e['url'] if e['url'].startswith('http') else (
-            (SITE_URL + e['url']) if SITE_URL and e['url'].startswith('/') else e['url']
+    # category pages
+    for cat, posts in cats_map.items():
+        posts.sort(key=lambda x:x["date"], reverse=True)
+        body = render_category_body(cat, posts, pills)
+        html = render_shell(
+            title=cat,
+            body=body,
+            page_class="page-category",
+            css_name="category.css",
+            js_name="category.js"
         )
+        write_text(BLOG_DIR/"category"/f"{slugify(cat)}.html", html)
+
+    # RSS (50 bài)
+    items=[]
+    for e in entries[:50]:
         items.append(f"""<item>
   <title><![CDATA[{e['title']}]]></title>
-  <link>{link}</link>
-  <guid isPermaLink="false">{link}</guid>
+  <link>{e['url']}</link>
+  <guid isPermaLink="false">{e['url']}</guid>
   <pubDate>{e['date'].strftime('%a, %d %b %Y 00:00:00 +0000')}</pubDate>
 </item>""")
     feed=f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<title>{BRAND}</title><link>{home_link}</link><description>RSS</description>
+<title>{BRAND}</title><link>{BASE_URL}</link><description>RSS</description>
 {''.join(items)}
 </channel></rss>"""
-    write_text(SITE / "feed.xml", feed.strip())
+    write_text(BLOG_DIR/"feed.xml", feed.strip())
 
-    # sitemap
-    urls=[]
-    urls.append((SITE_URL or "").rstrip("/") + "/") if SITE_URL else urls.append(BASE_URL)
-    # blog home
-    urls.append((SITE_URL + "/blog/") if SITE_URL else (BASE_URL + "blog/"))
-    # coming soon home
-    urls.append((SITE_URL + "/coming-soon/") if SITE_URL else (BASE_URL + "coming-soon/"))
-    # posts
-    for e in entries:
-        if e["url"].startswith("http"): urls.append(e["url"])
-        elif SITE_URL and e["url"].startswith("/"): urls.append(SITE_URL + e["url"])
-        else: urls.append(e["url"])
-    # categories
-    for c in cats_map.keys():
-        urls.append((SITE_URL + f"/category/{slugify(c)}.html") if SITE_URL
-                    else f"{BASE_URL}category/{slugify(c)}.html")
-
+    # sitemap + index.json
+    urls=[BASE_URL] + [e["url"] for e in entries]
+    urls += [f"/category/{slugify(c)}.html" for c in cats_map.keys()]
     sm=["<?xml version='1.0' encoding='UTF-8'?>","<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for u in urls: sm.append(f"<url><loc>{u}</loc></url>")
     sm.append("</urlset>")
-    write_text(SITE / "sitemap.xml", "\n".join(sm))
+    write_text(BLOG_DIR/"sitemap.xml", "\n".join(sm))
 
-    # index.json
-    data = [{"title":e["title"],"date":e["date"].isoformat(),"url":e["url"],"categories":e["categories"]}
-            for e in entries]
-    write_text(SITE / "index.json", json.dumps(data, ensure_ascii=False, indent=2))
+    write_text(BLOG_DIR/"index.json", json.dumps([
+        {"title":e["title"],"date":e["date"].isoformat(),"url":e["url"],"categories":e["categories"]} for e in entries
+    ], ensure_ascii=False, indent=2))
+
+    print(f"[BLOG] {len(entries)} post(s), {len(cats_map)} category page(s) → {BLOG_DIR}")
 
 
-# ---------- Main ----------
-def build_all():
-    ensure_assets()
-    copy_images()
+# ================== BUILD COMING-SOON & CONTACT ==================
+def build_coming_soon():
+    src = ROOT/"coming-soon"/"index.html"
+    if src.exists():
+        shutil.copy2(src, COMING_DIR/"index.html")
+        print(f"[COMING] Copied → {COMING_DIR/'index.html'}")
 
-    entries=[]; cats_map={}
+def build_contact():
+    src = ROOT/"contact"/"index.html"
+    if src.exists():
+        shutil.copy2(src, CONTACT_DIR/"index.html")
+        print(f"[CONTACT] Copied → {CONTACT_DIR/'index.html'}")
 
-    # scan posts
-    if POSTS.exists():
-        for p in POSTS.rglob("*"):
-            if p.is_file() and p.suffix.lower()==".md":
-                render_post(p, p.stem, entries, cats_map)
-            elif p.is_dir() and (p/"index.md").exists():
-                render_post(p/"index.md", p.name, entries, cats_map)
 
-    entries.sort(key=lambda x:x["date"], reverse=True)
-
-    unique_cats = sorted({c for e in entries for c in e["categories"]}) if entries else []
-    pills = [{"href": f"{BASE_URL}category/{slugify(c)}.html", "label": c} for c in unique_cats]
-
-    build_index(entries, pills)
-    for cat, posts in cats_map.items():
-        posts.sort(key=lambda x:x["date"], reverse=True)
-        build_category(cat, posts, pills)
-
+# ================== MAIN ==================
+def main():
+    build_blog()
     build_coming_soon()
-    build_host_router()
-    build_rss_and_maps(entries, cats_map)
-
-    print(f"Built {len(entries)} post(s), {len(cats_map)} category page(s) → {SITE}")
-
+    build_contact()
+    print(f"✅ Built to {OUT_ROOT}")
 
 if __name__ == "__main__":
-    build_all()
+    main()
