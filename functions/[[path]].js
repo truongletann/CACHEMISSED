@@ -1,40 +1,52 @@
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const host = url.hostname;
+export async function onRequest(context) {
+  const { request, env, next } = context;
+  const url = new URL(request.url);
 
-    // Map host -> thư mục con trong _public
-    const map = {
-      'blog.cachemissed.lol': '/blog',
-      'cachemissed.lol': '/coming-soon',
-      'www.cachemissed.lol': '/coming-soon',
-      'comingsoon.cachemissed.lol': '/coming-soon',
-      'cs.cachemissed.lol': '/coming-soon',
-      'contact.cachemissed.lol': '/contact',
-    };
+  // Chuẩn hoá host (bỏ www.)
+  const host = url.hostname.replace(/^www\./i, "");
+  const path = url.pathname;
 
-    // Mặc định (host lạ): cho về blog
-    const base = map[host] ?? '/blog';
+  // Helper: fetch file từ output (_public) theo 1 đường dẫn tuyệt đối
+  async function serveAsset(absPath) {
+    // luôn dùng đường dẫn tuyệt đối bắt đầu bằng "/"
+    const target = new URL(absPath, url);
+    return env.ASSETS.fetch(target);
+  }
 
-    // Chuẩn hóa đường dẫn
-    let p = url.pathname;
-    if (p === '' || p === '/') p = '/index.html';
-    if (p.endsWith('/')) p += 'index.html';
+  // 1) BLOG — host: blog.cachemissed.lol
+  if (host === "blog.cachemissed.lol") {
+    // /  ->  /blog/index.html
+    if (path === "/") return serveAsset("/blog/index.html");
 
-    // Đường dẫn asset thực sự trong _public
-    const assetPath = `${base}${p}`;
+    // Nếu đã ở trong /blog/... thì cho tĩnh xử lý
+    if (path.startsWith("/blog/")) return next();
 
-    // Trả đúng file
-    const res = await env.ASSETS.fetch(
-      new Request(new URL(assetPath, url), request)
-    );
+    // Các đường dẫn khách (ví dụ /posts/abc.html) ta rewrite sang /blog/<path>
+    // Nếu kết thúc "/", thêm index.html
+    const p = path.endsWith("/") ? `${path}index.html` : path;
+    return serveAsset(`/blog${p}`);
+  }
 
-    // Nếu lỡ không có file (404) thì trả trang index của section
-    if (res.status === 404) {
-      return env.ASSETS.fetch(
-        new Request(new URL(`${base}/index.html`, url), request)
-      );
-    }
-    return res;
-  },
-};
+  // 2) COMING SOON SUBDOMAIN — (tuỳ chọn)
+  if (host === "cs.cachemissed.lol" || host === "comingsoon.cachemissed.lol") {
+    // / -> /coming-soon/index.html
+    if (path === "/") return serveAsset("/coming-soon/index.html");
+    // Nếu đã ở /coming-soon/... thì để tĩnh xử lý
+    if (path.startsWith("/coming-soon/")) return next();
+    // Các đường dẫn khác: rewrite vào /coming-soon
+    const p = path.endsWith("/") ? `${path}index.html` : path;
+    return serveAsset(`/coming-soon${p}`);
+  }
+
+  // 3) APEX — cachemissed.lol  => làm trang Coming Soon
+  if (host === "cachemissed.lol") {
+    if (path === "/") return serveAsset("/coming-soon/index.html");
+    if (path.startsWith("/coming-soon/")) return next();
+    // Các đường dẫn khác rewrite vào coming-soon (không redirect để tránh loop client)
+    const p = path.endsWith("/") ? `${path}index.html` : path;
+    return serveAsset(`/coming-soon${p}`);
+  }
+
+  // 4) Mặc định: để Pages tự phục vụ (nếu còn host khác)
+  return next();
+}
