@@ -1,41 +1,43 @@
 // functions/[[path]].js
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url  = new URL(request.url);
     const host = url.hostname;
 
-    // Nhóm host
-    const BLOG      = new Set(['blog.cachemissed.lol']);
-    const COMINGSOON= new Set(['cachemissed.lol','www.cachemissed.lol','comingsoon.cachemissed.lol','cs.cachemissed.lol']);
-    const CONTACT   = new Set(['contact.cachemissed.lol']);
-
-    // helper: REWRITE (không đổi URL người dùng, tránh loop)
-    const rewrite = (toPath) => {
-      const target = new URL(toPath, url.origin);
-      target.search = url.search; // giữ query
-      return fetch(new Request(target, request));
+    // Helper: phục vụ file tĩnh từ thư mục build (ASSETS) mà KHÔNG tái chạy Functions
+    const serve = (path) => {
+      const assetURL = new URL(path, url.origin);
+      return env.ASSETS.fetch(new Request(assetURL, request));
     };
 
-    if (BLOG.has(host)) {
-      // /  -> /blog/
-      // /abc -> /blog/abc
-      const p = url.pathname;
-      const toPath = (p === '/')
-        ? '/blog/'
-        : (p.startsWith('/blog') ? p : `/blog${p}`);
-      return rewrite(toPath);
+    // BLOG — host blog.cachemissed.lol -> map vào /blog
+    if (host === 'blog.cachemissed.lol') {
+      // / -> /blog/index.html ; /abc -> /blog/abc ; /abc/ -> /blog/abc/index.html
+      let p = url.pathname === '/' ? '/blog/index.html' : `/blog${url.pathname}`;
+      if (p.endsWith('/')) p += 'index.html';
+      return serve(p);
     }
 
-    if (COMINGSOON.has(host)) {
-      return rewrite('/coming-soon/');       // trang Coming Soon
+    // COMING SOON — apex + các sub tương ứng -> /coming-soon
+    if (
+      host === 'cachemissed.lol' ||
+      host === 'www.cachemissed.lol' ||
+      host === 'comingsoon.cachemissed.lol' ||
+      host === 'cs.cachemissed.lol'
+    ) {
+      let p = url.pathname === '/' ? '/coming-soon/index.html' : `/coming-soon${url.pathname}`;
+      if (p.endsWith('/')) p += 'index.html';
+      return serve(p);
     }
 
-    if (CONTACT.has(host)) {
-      return rewrite('/contact/');           // nếu có trang contact
+    // CONTACT (nếu có)
+    if (host === 'contact.cachemissed.lol') {
+      let p = url.pathname === '/' ? '/contact/index.html' : `/contact${url.pathname}`;
+      if (p.endsWith('/')) p += 'index.html';
+      return serve(p);
     }
 
-    // fallback: coi như blog
-    const p = url.pathname;
-    return rewrite(p.startsWith('/blog') ? p : `/blog${p}`);
+    // Mặc định: cho về blog
+    return serve('/blog/index.html');
   }
 }
