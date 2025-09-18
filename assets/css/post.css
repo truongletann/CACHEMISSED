@@ -1,0 +1,82 @@
+.post-wrap{max-width:1200px;margin:28px auto;padding:0 18px;display:grid;grid-template-columns:260px 1fr;gap:28px}
+article.content{max-width:var(--w);padding:0 16px}
+article.content h1{font-size:34px;text-align:left;margin:0 0 10px}
+.meta{color:var(--muted);font-size:14px;margin-bottom:12px}
+.toc{position:sticky;top:calc(var(--head-h) + var(--toc-offset));align-self:start;max-height:calc(100vh - var(--head-h) - var(--toc-offset) - 20px);overflow:auto;padding-left:10px;border-left:2px solid var(--rule);font-size:13px;color:var(--muted)}
+.toc .toc-title{font-weight:700;color:var(--ink);margin:0 0 6px}
+.toc ul{list-style:none;margin:0;padding:0}
+.toc li{margin:4px 0}
+.toc a{color:var(--muted);text-decoration:none}
+.toc a:hover{color:var(--link);text-decoration:underline}
+.toc .lvl-2{padding-left:10px}.toc .lvl-3{padding-left:18px}
+#toc.collapsed .lvl-2,#toc.collapsed .lvl-3{display:none}
+@media (max-width:1024px){
+  .post-wrap{display:block}
+  .toc{ position:relative; top:auto; max-height:none; border-left:0; border-top:1px solid var(--rule);
+        padding-top:10px; margin:0 auto 12px; max-width:var(--w) }
+}
+
+/* Grid post + TOC: đã có breakpoint 1024px → block */
+/* Tăng độ đọc trên mobile */
+@media (max-width: 640px){
+  .meta{ font-size: 13px; }
+  article.content{ padding:0 4px; }
+  .toc{ font-size:12.5px; }
+}
+
+/* Link chung */
+a{ color: var(--link); }
+
+/* Tiêu đề bài ở index & category */
+.page-index .post h2 a,
+.page-category .post h2 a{ color: var(--accent); }
+.page-index .post h2 a:hover,
+.page-category .post h2 a:hover{ text-decoration: underline; }
+
+/* Tiêu đề trong trang bài viết */
+.page-post article h1,
+.page-post article h2 a{ color: var(--accent); }
+
+/* TOC tools (post): stack vertically */
+.toc-tools{
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start;
+  gap: 6px;
+}
+.toc-tools a{
+  display: block !important;   /* mỗi link 1 dòng */
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.35;
+}
+.toc-tools a:hover{
+  color: var(--link);
+  text-decoration: underline;
+}
+
+/* TOC tools: mỗi link một dòng (trang post) */
+.toc .toc-tools{
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+}
+.toc .toc-tools a{
+  display: block !important;   /* mỗi link chiếm 1 dòng */
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+  text-decoration: none;
+}
+.toc .toc-tools a:hover{
+  color: var(--link);
+  text-decoration: underline;
+}

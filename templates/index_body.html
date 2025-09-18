@@ -1,0 +1,17 @@
+<div class="catbar">
+  {% if pills %}<nav class="pills">
+    {% for p in pills %}<a class="pill" href="{{ p.href }}">{{ p.label }}</a>{% endfor %}
+  </nav>{% endif %}
+</div>
+
+<main>
+  <div class="hr"></div>
+  <div id="list">
+  {% for p in posts %}
+    <article class="post" data-title="{{ p.title | e }}">
+      <div class="date">{{ p.date_human }}</div>
+      <h2><a href="{{ p.url }}">{{ p.title }}</a></h2>
+    </article>
+  {% endfor %}
+  </div>
+</main>

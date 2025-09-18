@@ -1,0 +1,52 @@
+name: Build & Deploy to Cloudflare Pages (single repo → multi-subdomains)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Build blog with BASE_URL=/blog/
+        run: |
+          BASE_URL=/blog/ python publish.py
+
+      - name: Assemble final output to _public
+        run: |
+          rm -rf _public && mkdir -p _public
+          # Coming Soon -> /coming-soon  (đặt mã nguồn tại ./coming-soon/)
+          mkdir -p _public/coming-soon
+          cp -r coming-soon/* _public/coming-soon/ 2>/dev/null || true
+
+          # Contact -> /contact (nếu có thư mục ./contact)
+          if [ -d contact ]; then
+            mkdir -p _public/contact
+            cp -r contact/* _public/contact/
+          fi
+
+          # Blog -> /blog  (từ site/ do publish.py tạo)
+          mkdir -p _public/blog
+          cp -r site/* _public/blog/
+
+          # (tuỳ chọn) root index: chuyển thẳng tới /coming-soon/
+          echo '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
+
+      - name: Deploy to Cloudflare Pages (project: cachemissed)
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: cachemissed
+          directory: _public
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

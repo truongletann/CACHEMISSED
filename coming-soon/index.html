@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sắp ra mắt</title>
+  <style>
+    :root{ --brand:#16a34a; --text:#e5e7eb; --overlay-alpha:.28; --fade:900ms; --maxw:760px }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);background:#0b1220;overflow:hidden}
+
+    /* Background layers */
+    .bg{position:fixed;inset:0;z-index:-2;background:center/cover no-repeat;filter:blur(1px);transition:opacity var(--fade) ease}
+    .bg{opacity:1}
+    .bg.next{opacity:0}
+    .shade{position:fixed;inset:0;background:rgba(0,0,0,var(--overlay-alpha));z-index:-1}
+
+    /* Layout */
+    .wrap{height:100%;display:grid;place-items:center;padding:24px}
+    .hero{width:min(100%,var(--maxw));margin:auto;display:grid;gap:16px}
+    .headline{position:relative;display:grid;gap:6px;padding:0 16px 10px 16px}
+    .headline .kicker{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.2em;opacity:.9}
+    .accent-bar{position:absolute;left:8px;top:0;bottom:8px;width:4px;border-radius:999px;background:linear-gradient(180deg,#22c55e,#06b6d4);box-shadow:0 0 18px rgba(34,197,94,.55)}
+    h1{margin:6px 0 0}
+    .title{display:block;font-weight:900;letter-spacing:-.6px;color:#fff;text-shadow:0 4px 22px rgba(0,0,0,.45)}
+    .title.split span{display:block;line-height:1.02;font-size:clamp(34px,6vw,64px)}
+    p.lead{margin:0 16px 8px;opacity:.95}
+
+    /* Form */
+    .pill-form{display:inline-flex;gap:12px;align-items:flex-end;margin-left:16px}
+    .pill-form input{width:min(520px,75vw);height:40px;padding:0;background:transparent;color:#fff;border:none;outline:none;border-bottom:2px solid rgba(255,255,255,.35);transition:border-color .2s ease,box-shadow .2s ease}
+    .pill-form input::placeholder{color:rgba(255,255,255,.6)}
+    .pill-form input:focus{border-bottom-color:#a7f3d0;box-shadow:0 4px 0 -2px #a7f3d0}
+    .pill-form .icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:rgba(0,0,0,.35);backdrop-filter:blur(6px) saturate(140%);border:1.5px solid rgba(255,255,255,.35);color:#e5e7eb;cursor:pointer;transition:transform .12s ease,background .2s ease,border-color .2s ease}
+    .pill-form .icon-btn:hover{background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.55);color:#fff;transform:translateY(-1px)}
+
+    /* Countdown */
+    .countdown{position:relative;display:inline-flex;align-items:center;gap:16px;margin:10px 16px 2px;padding:12px 18px;border-radius:24px;background:transparent;border:0}
+    .countdown .label{display:inline-flex;align-items:center;gap:8px;padding-bottom:6px;font-weight:700}
+    .countdown .seg{display:inline-flex;align-items:baseline;gap:6px;padding:6px 10px;border-radius:12px;background:transparent;border:1px solid rgba(255,255,255,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+    .countdown .seg b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.4px;display:inline-block;min-width:2ch;text-align:right}
+    .countdown .seg b.changed{animation:flip 450ms ease, shine 900ms ease}
+    .countdown .seg em{opacity:.9;font-style:normal;font-size:12px}
+    .countdown .dot{opacity:.5;animation:breath 1.8s ease-in-out infinite}
+    @keyframes breath{0%{opacity:.28}50%{opacity:.68}100%{opacity:.28}}
+    @keyframes shine{0%{text-shadow:0 0 0 rgba(255,255,255,0)}30%{text-shadow:0 0 16px rgba(255,255,255,.28)}100%{text-shadow:0 0 0 rgba(255,255,255,0)}}
+    @keyframes flip{0%{transform:rotateX(-80deg);opacity:.2}50%{transform:rotateX(10deg);opacity:1}100%{transform:rotateX(0)}}
+
+    /* Dock (Prev/Next) */
+    .dock{position:fixed;right:16px;bottom:16px;z-index:10020;display:flex;gap:6px;padding:10px 12px;border-radius:22px;background:transparent;border:1px solid rgba(255,255,255,.12)}
+    .dock .btn{display:inline-flex;align-items:center;justify-content:center;height:36px;width:36px;min-width:36px;border-radius:12px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.18);cursor:pointer;transition:transform .12s ease, border-color .2s ease, background .2s ease}
+    .dock .btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.36);background:rgba(255,255,255,.07)}
+    .dock .btn:active{transform:translateY(0);background:rgba(255,255,255,.12)}
+
+    .footer{position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:12px;opacity:.75}
+
+    /* Language toggle pill */
+    .lang {
+      position: fixed; top: 14px; right: 14px; z-index: 10030;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.18); color:#fff;
+      backdrop-filter: blur(6px) saturate(130%);
+      font-size: 12px; font-weight: 600; letter-spacing:.2px;
+      cursor: pointer; user-select: none;
+      transition: transform .12s ease, background .2s ease, border-color .2s ease;
+    }
+    .lang:hover { transform: translateY(-1px); background: rgba(0,0,0,.26); border-color: rgba(255,255,255,.32); }
+    .lang:active { transform: translateY(0); }
+
+    @media (max-width:768px){
+      :root{--maxw:94vw}
+      .countdown{gap:10px;padding:10px 12px}
+      .countdown .seg{padding:4px 8px}
+      .dock{right:12px;bottom:12px}
+      .lang{top:10px;right:10px}
+    }
+    @media (max-width:480px){
+      .title.split span{font-size:clamp(28px,9vw,44px)}
+      .countdown .seg b{font-size:16px}
+      .pill-form input{width:70vw}
+    }
+  </style>
+</head>
+<body>
+  <!-- Background -->
+  <div id="bgA" class="bg"></div>
+  <div id="bgB" class="bg next"></div>
+  <div class="shade" id="shade"></div>
+
+  <main class="wrap">
+    <section class="hero" role="dialog" aria-label="Coming soon">
+      <div class="headline">
+        <span class="accent-bar" aria-hidden="true"></span>
+        <div class="kicker" id="i_kicker">CHÚNG TÔI</div>
+        <h1 class="title split"><span id="i_coming">Sắp</span><span id="i_soon">Ra mắt</span></h1>
+      </div>
+
+      <p class="lead" id="i_lead">
+        Trang web đang được xây dựng. Hãy để lại email để nhận thông báo khi ra mắt!
+      </p>
+
+      <div id="countdown" class="countdown">
+        <span class="label" id="i_launching">Ra mắt sau:</span>
+        <span class="seg"><b>00</b><em>ng</em></span><span class="dot">:</span>
+        <span class="seg"><b>00</b><em>gi</em></span><span class="dot">:</span>
+        <span class="seg"><b>00</b><em>p</em></span><span class="dot">:</span>
+        <span class="seg"><b>00</b><em>s</em></span>
+      </div>
+
+      <form class="pill-form" onsubmit="event.preventDefault(); alert('Cảm ơn! Chúng tôi sẽ thông báo cho bạn.');">
+        <input id="email" type="email" placeholder="Email của bạn" aria-label="Email" required />
+        <button class="icon-btn" type="submit" aria-label="Notify me" title="Notify me">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2Zm6-6V11a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2Z"
+                  fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+    </section>
+  </main>
+
+  <!-- Prev / Next -->
+  <div class="dock" id="dock">
+    <button class="btn" id="dockPrev" aria-label="Ảnh trước">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="btn" id="dockNext" aria-label="Ảnh sau">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
+  <!-- Language toggle -->
+  <div class="lang" id="langToggle" role="button" aria-label="Change language">VI • EN</div>
+
+  <div class="footer">© <span id="y"></span> CacheMissed</div>
+
+  <script>
+    // ===== CONFIG =====
+    const KEY = 'comingsoon.bg.index';
+    const ROTATE_STORAGE = 'comingsoon.rotate.minutes';
+    const DEFAULT_MINUTES = Number(localStorage.getItem(ROTATE_STORAGE)) || 5;
+    const LAUNCH_AT = new Date(Date.now() + 30*24*60*60*1000); // +30 ngày
+    const IMGS = [
+      {url:'https://picsum.photos/id/1018/1920/1080'},
+      {url:'https://picsum.photos/id/1020/1920/1080'},
+      {url:'https://picsum.photos/id/1003/1920/1080'},
+      {url:'https://picsum.photos/id/1015/1920/1080'},
+      {url:'https://picsum.photos/id/1016/1920/1080'},
+      {url:'https://picsum.photos/id/1022/1920/1080'},
+      {url:'https://picsum.photos/id/1036/1920/1080'},
+      {url:'https://picsum.photos/id/1024/1920/1080'},
+      {url:'https://picsum.photos/id/1043/1920/1080'},
+      {url:'https://picsum.photos/id/1056/1920/1080'}
+    ];
+
+    // Footer year (safe)
+    const yearEl = document.getElementById('y');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+    /* ==== i18n: VI/EN toggle ==== */
+    const dict = {
+      en: {
+        kicker:"WE'RE", coming:'Coming', soon:'Soon',
+        lead:'Our website is under construction. Leave your email to be notified at launch!',
+        launching:'Launching in:',
+        emailPH:'Your email',
+        units:{ d:'d', h:'h', m:'m', s:'s' }
+      },
+      vi: {
+        kicker:'CHÚNG TÔI', coming:'Sắp', soon:'Ra mắt',
+        lead:'Trang web đang được xây dựng. Hãy để lại email để nhận thông báo khi ra mắt!',
+        launching:'Ra mắt sau:',
+        emailPH:'Email của bạn',
+        units:{ d:'ng', h:'gi', m:'p', s:'s' }
+      }
+    };
+    let lang = (localStorage.getItem('comingsoon.lang') || 'vi').toLowerCase();
+    if (!dict[lang]) lang = 'vi';
+
+    function renderCountdownSkeleton() {
+      const d = dict[lang];
+      const el = document.getElementById('countdown');
+      if (!el) return;
+      el.innerHTML = `
+        <span class="label" id="i_launching2">${d.launching}</span>
+        <span class="seg"><b id="dVal">00</b><em>${d.units.d}</em></span>
+        <span class="dot">:</span>
+        <span class="seg"><b id="hVal">00</b><em>${d.units.h}</em></span>
+        <span class="dot">:</span>
+        <span class="seg"><b id="mVal">00</b><em>${d.units.m}</em></span>
+        <span class="dot">:</span>
+        <span class="seg"><b id="sVal">00</b><em>${d.units.s}</em></span>`;
+    }
+
+    function applyLang() {
+      const d = dict[lang];
+      const $ = id => document.getElementById(id);
+      if ($('i_kicker'))  $('i_kicker').textContent = d.kicker;
+      if ($('i_coming'))  $('i_coming').textContent = d.coming;
+      if ($('i_soon'))    $('i_soon').textContent   = d.soon;
+      if ($('i_lead'))    $('i_lead').textContent   = d.lead;
+      if ($('i_launching')) $('i_launching').textContent = d.launching;
+      if ($('i_launching2')) $('i_launching2').textContent = d.launching;
+      if ($('email'))     $('email').placeholder = d.emailPH;
+      document.documentElement.lang = lang;
+
+      // cập nhật đơn vị nếu có sẵn DOM (phòng khi không re-render skeleton)
+      const segUnits = document.querySelectorAll('.countdown .seg em');
+      if (segUnits.length >= 4) {
+        segUnits[0].textContent = d.units.d;
+        segUnits[1].textContent = d.units.h;
+        segUnits[2].textContent = d.units.m;
+        segUnits[3].textContent = d.units.s;
+      }
+    }
+
+    // khởi tạo i18n
+    renderCountdownSkeleton();
+    applyLang();
+
+    const langBtn = document.getElementById('langToggle');
+    if (langBtn) {
+      langBtn.textContent = (lang === 'vi') ? 'VI • EN' : 'EN • VI';
+      langBtn.addEventListener('click', () => {
+        lang = (lang === 'vi') ? 'en' : 'vi';
+        localStorage.setItem('comingsoon.lang', lang);
+        renderCountdownSkeleton();
+        applyLang();
+        if (typeof window._forceTick === 'function') window._forceTick();
+        langBtn.textContent = (lang === 'vi') ? 'VI • EN' : 'EN • VI';
+      });
+    }
+
+    // Helpers
+    function setBg(el, url){ el.style.backgroundImage = `url('${url}')`; }
+    function preload(idx){ const a=new Image(), b=new Image(); a.src=IMGS[(idx+1)%IMGS.length].url; b.src=IMGS[(idx+2)%IMGS.length].url; }
+    async function adjustOverlayByImage(url){
+      try{
+        const img = new Image(); img.crossOrigin='anonymous'; img.src=url; await img.decode();
+        const c=document.createElement('canvas'); c.width=32;c.height=32; const x=c.getContext('2d');
+        x.drawImage(img,0,0,32,32);
+        const d = x.getImageData(0,0,32,32).data; let sum=0;
+        for(let i=0;i<d.length;i+=4){ sum += 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]; }
+        const lum = sum/(255*(d.length/4));
+        const alpha = Math.max(.18, Math.min(.5, 0.55 - lum*0.35));
+        document.documentElement.style.setProperty('--overlay-alpha', String(alpha));
+      }catch(e){ document.documentElement.style.setProperty('--overlay-alpha', '.28'); }
+    }
+    function swapTo(nextIdx){
+      const current = document.querySelector('.bg:not(.next)');
+      const next = document.querySelector('.bg.next');
+      const it = IMGS[nextIdx];
+      const probe = new Image();
+      probe.onload = function(){
+        setBg(next, it.url);
+        void next.offsetWidth;
+        current.classList.add('next');
+        next.classList.remove('next');
+        localStorage.setItem(KEY, String(nextIdx));
+        preload(nextIdx);
+        adjustOverlayByImage(it.url);
+      };
+      probe.onerror = function(){
+        const alt=(nextIdx+1)%IMGS.length; if(alt!==nextIdx) swapTo(alt);
+      };
+      probe.src = it.url;
+    }
+
+    // Countdown tick (exposes _forceTick hook)
+    (function(){
+      const dEl=()=>document.getElementById('dVal'),
+            hEl=()=>document.getElementById('hVal'),
+            mEl=()=>document.getElementById('mVal'),
+            sEl=()=>document.getElementById('sVal');
+      const pad2 = n => String(n).padStart(2,'0');
+      function setVal(el,newVal){ if(!el) return; if(el.textContent!==newVal){ el.textContent=newVal; el.classList.remove('changed'); void el.offsetWidth; el.classList.add('changed'); } }
+      function tick(){
+        let diff=LAUNCH_AT-Date.now(); if(diff<0) diff=0;
+        const d=Math.floor(diff/86400000); diff%=86400000;
+        const h=Math.floor(diff/3600000); diff%=3600000;
+        const m=Math.floor(diff/60000); diff%=60000;
+        const s=Math.floor(diff/1000);
+        setVal(dEl(), pad2(d)); setVal(hEl(), pad2(h));
+        setVal(mEl(), pad2(m)); setVal(sEl(), pad2(s));
+      }
+      window._forceTick = tick;  // cho i18n gọi lại sau khi re-render
+      tick(); setInterval(tick,1000);
+    })();
+
+    // Init slideshow
+    let idx = Number(localStorage.getItem(KEY));
+    if (!Number.isInteger(idx) || idx<0 || idx>=IMGS.length) idx = 0;
+    setBg(document.getElementById('bgA'), IMGS[idx].url);
+    preload(idx);
+    adjustOverlayByImage(IMGS[idx].url);
+
+    // Rotate every DEFAULT_MINUTES
+    let paused=false;
+    setInterval(()=>{ if(!paused){ const ni=(idx+1)%IMGS.length; swapTo(ni); idx=ni; } }, DEFAULT_MINUTES*60000);
+
+    // Dock buttons
+    const btnNext=document.getElementById('dockNext');
+    const btnPrev=document.getElementById('dockPrev');
+    if(btnNext) btnNext.onclick=()=>{ const ni=(idx+1)%IMGS.length; swapTo(ni); idx=ni; };
+    if(btnPrev) btnPrev.onclick=()=>{ const pi=(idx-1+IMGS.length)%IMGS.length; swapTo(pi); idx=pi; };
+
+    // Pause rotate khi hover vùng chính
+    const pauseAreas=[document.querySelector('.hero'), document.getElementById('dock'), document.getElementById('email')];
+    pauseAreas.forEach(el=>{
+      if(!el) return;
+      el.addEventListener('mouseenter',()=>paused=true,{passive:true});
+      el.addEventListener('mouseleave',()=>paused=false,{passive:true});
+      el.addEventListener('focusin',()=>paused=true);
+      el.addEventListener('focusout',()=>paused=false);
+    });
+
+    // ========== KHỐI LẤY ẢNH BING CỦA BẠN (giữ nguyên), gắn an toàn ==========
+    (function(IMAGES, KEY){
+      // Helpers
+      function setBg(el, url) { el.style.backgroundImage = "url('" + url + "')"; }
+      function swapTo(nextIdx) {
+        const current = document.querySelector('.bg:not(.next)');
+        const next = document.querySelector('.bg.next');
+        const url = IMAGES[nextIdx];
+        const probe = new Image();
+        probe.onload = function(){
+          setBg(next, url);
+          void next.offsetWidth;
+          current.classList.add('next');
+          next.classList.remove('next');
+          localStorage.setItem(KEY, String(nextIdx));
+        };
+        probe.onerror = function(){
+          console.warn('[comingsoon] Ảnh lỗi, bỏ qua:', url);
+          const alt = (nextIdx + 1) % IMAGES.length; if (alt !== nextIdx) swapTo(alt);
+        };
+        probe.src = url;
+      }
+
+      // Try to fetch 10 newest Bing images (client-side, multi-proxy to avoid CORS)
+      async function fetchLatestBing(n=30) {
+        const base = 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=' + n + '&mkt=en-US';
+        const urls = [
+          'https://cors.isomorphic-git.org/' + base,
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(base)
+        ];
+        for (const u of urls) {
+          try {
+            const res = await fetch(u, { cache: 'no-store' });
+            const data = await res.json();
+            if (data && data.images && data.images.length) return data.images;
+          } catch (e) { /* try next */ }
+        }
+        return [];
+      }
+
+      // Nature keyword filter (simple heuristic)
+      const natureKeys = ['forest','park','mount','mountain','river','lake','ocean','sea','coast','beach','desert','dune','valley','canyon','national','island','sky','milky','aurora','ice','glacier','waterfall','falls','meadow','field','savanna','fjord','cliff'];
+
+      (async function init(){
+        // 1) Try to replace IMAGES with 10 newest nature wallpapers
+        try {
+          const images = await fetchLatestBing(30);
+          if (images.length) {
+            const picked = images
+              .map(x => ({ url: 'https://www.bing.com' + x.url, text: (x.copyright || x.title || '').toLowerCase() }))
+              .filter(x => natureKeys.some(k => x.text.includes(k)))
+              .slice(0, 10)
+              .map(x => x.url);
+            if (picked.length >= 5) { // at least 5 matches → good enough
+              IMAGES.splice(0, IMAGES.length, ...picked);
+              console.info('[comingsoon] Dùng 10 ảnh thiên nhiên mới nhất từ Bing:', IMAGES);
+            } else if (images.length) {
+              // Not enough nature matches → just take first 10
+              const first10 = images.slice(0,10).map(x => 'https://www.bing.com' + x.url);
+              IMAGES.splice(0, IMAGES.length, ...first10);
+              console.info('[comingsoon] Dùng 10 ảnh mới nhất (không lọc):', IMAGES);
+            }
+          }
+        } catch (e) {
+          console.warn('[comingsoon] fetch bị chặn → dùng fallback');
+        }
+      })();
+    })( (function(){
+          // Proxy đồng bộ: đoạn của bạn dùng mảng URL (IMAGES), app dùng IMGS {url}
+          const proxy = new Proxy([], {
+            get(t,p){ if(p==='length') return IMGS.length; if(!isNaN(p)) return IMGS[p]?.url; return Array.prototype[p]; },
+            set(t,p,v){ if(p==='length'){ IMGS.length=v; return true; } if(!isNaN(p)){ IMGS[Number(p)]={url:v}; return true; } return true; }
+          });
+          IMGS.forEach((it,i)=>proxy[i]=it.url);
+          return proxy;
+        })(), KEY );
+    // =====================================================================
+  </script>
+</body>
+</html>

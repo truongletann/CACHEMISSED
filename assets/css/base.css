@@ -1,0 +1,327 @@
+:root{
+  --brand:#7f4beb; --brand-ink:#3b1d77;
+  --ink:#111; --muted:#666; --rule:#e6e6ee; --bg:#fff; --surface:#fff; --link:#1f6feb; --pill:#f2f3f8; --pill-ink:#111;
+  --d-bg:#0a0a0a; --d-ink:#f5d26b; --d-muted:#9c7f2b; --d-rule:#1a1a1a; --d-link:#ffd166; --d-pill:#121212; --d-pill-ink:#f5d26b;
+  --w: clamp(640px, 86vw, 820px); --head-h: 60px; --toc-offset: 18vh;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); --surface:var(--d-bg); --link:var(--d-link); --pill:var(--d-pill); --pill-ink:var(--d-pill-ink); }
+}
+:root[data-theme="light"]{ --ink:#111; --muted:#666; --rule:#e6e6ee; --bg:#fff; --surface:#fff; --link:#1f6feb; --pill:#f2f3f8; --pill-ink:#111; }
+:root[data-theme="dark"]{  --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); --surface:var(--d-bg); --link:var(--d-link); --pill:var(--d-pill); --pill-ink:var(--d-pill-ink); }
+
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif}
+a{color:var(--link)} img{max-width:100%;height:auto}
+
+.site-head{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--rule)}
+.head-inner{max-width:1200px;margin:0 auto;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:500;min-width:0}
+.brand .logo{width:28px;height:28px;display:block;flex:0 0 auto}
+.brand .logo-dark{display:none}
+:root[data-theme="dark"] .brand .logo-dark{display:block}
+:root[data-theme="dark"] .brand .logo-light{display:none}
+.brand span.txt{display:block;max-width:26vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-path{display:flex;align-items:center;gap:6px;min-width:0;color:var(--muted);font-weight:600}
+.brand-path .sep{opacity:.6}
+.docico{width:18px;height:18px;flex:0 0 auto;color:var(--muted)}
+.crumb-txt{max-width:38vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.spacer{flex:1 1 auto}
+
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--rule);padding:8px 12px;border-radius:999px;background:transparent;min-width:260px}
+.search input{border:0;outline:0;background:transparent;color:var(--ink);width:180px}
+.s-clear{display:none;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.search.has-text .s-clear{display:inline}
+.s-ico-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;border:0;background:transparent;cursor:pointer;color:var(--brand-ink)}
+.s-ico-btn svg{width:18px;height:18px;stroke:currentColor}
+.no-search .search{display:none}
+
+.theme{display:inline-flex;align-items:center;gap:10px;border:0;background:none;cursor:pointer;padding:0}
+.theme .label{font-weight:800;letter-spacing:.08em;font-size:12px;color:var(--muted);opacity:.35;transition:opacity .25s ease,color .25s ease}
+:root[data-theme="light"] .theme .label-light{color:var(--ink);opacity:1}
+:root[data-theme="dark"] .theme .label-dark{color:var(--ink);opacity:1}
+.theme .track{position:relative;width:58px;height:28px;border-radius:999px;background:#e9edf3;border:1px solid var(--rule)}
+.theme .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%}
+:root[data-theme="light"] .theme .knob{background:#ffd166;box-shadow:inset 0 0 0 2px rgba(0,0,0,.06);transform:translateX(28px)}
+:root[data-theme="light"] .theme .knob::after{
+  content:"";position:absolute;left:50%;top:50%;width:2px;height:2px;background:#ffd166;border-radius:1px;transform:translate(-50%,-50%);
+  box-shadow:0 -9px 0 0 #ffd166,0 9px 0 0 #ffd166,9px 0 0 0 #ffd166,-9px 0 0 0 #ffd166,6.4px -6.4px 0 0 #ffd166,-6.4px -6.4px 0 0 #ffd166,6.4px 6.4px 0 0 #ffd166,-6.4px 6.4px 0 0 #ffd166;
+}
+/* moon icon (dark) */
+:root[data-theme="dark"] .theme .knob{background:transparent}
+:root[data-theme="dark"] .theme .knob::after{
+  content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23f5d26b' stroke='%23000' stroke-width='1.6'/></svg>") center/20px 20px no-repeat;
+}
+
+main{max-width:var(--w);margin:28px auto;padding:0 16px}
+h1{text-align:center;font-size:28px;margin:12px 0 18px}
+.hr{height:2px;background:var(--rule);margin:16px 0 18px}
+.pills{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:6px 0 12px}
+.pill{padding:8px 12px;border-radius:999px;background:var(--pill);color:var(--pill-ink);text-decoration:none;font-weight:700;font-size:14px}
+
+/* Footer minimal, centered, small text, no line */
+.site-footer{
+  margin-top: auto;
+  background: transparent;     /* hoặc var(--surface) nếu muốn */
+  border-top: 0;                /* bỏ đường kẻ */
+}
+.site-footer .inner{
+  max-width: var(--w);
+  margin: 24px auto 32px;
+  padding: 0 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;            /* chữ nhỏ */
+  line-height: 1.4;
+}
+
+/* Layout để footer dính đáy trang (nếu bạn chưa có) */
+html, body { height: 100%; }
+body { min-height: 100%; display: flex; flex-direction: column; }
+main, .post-wrap { flex: 1; }
+
+/* ====== Responsive fundamentals ====== */
+
+/* Fluid type & container */
+:root{
+  --w: clamp(320px, 92vw, 820px); /* co giãn tốt hơn trên mobile */
+}
+/* body font-size theo viewport, vẫn đọc tốt ở mobile */
+body{ font-size: clamp(15px, 1.1vw + 0.4rem, 16.5px); }
+
+/* Headings co giãn */
+h1{ font-size: clamp(22px, 2.4vw + 0.6rem, 28px); }
+article.content h1{ font-size: clamp(22px, 2.8vw + 0.6rem, 34px); }
+
+/* Media elements */
+img, video, canvas{ max-width:100%; height:auto; display:block; }
+pre{ overflow:auto; -webkit-overflow-scrolling:touch; }
+table{ width:100%; border-collapse:collapse; overflow:auto; display:block; }
+
+/* Header responsiveness */
+.head-inner{ padding:12px 14px; }
+.brand .txt{ max-width:40vw; }
+@media (max-width: 768px){
+  .head-inner{ gap:10px; }
+  .brand .txt{ max-width:50vw; }
+}
+@media (max-width: 480px){
+  .brand .txt{ display:none; }           /* giữ logo, ẩn chữ brand cho gọn */
+}
+
+/* Pills wrap đẹp */
+.pills{ justify-content:flex-start; }
+@media (max-width: 640px){
+  .pills{ gap:8px; }
+  .pill{ padding:7px 10px; font-size:13px; }
+}
+
+/* Footer minimal – đã làm nhỏ & giữa; giữ hiển thị tốt trên mobile */
+.site-footer .inner{
+  max-width:var(--w);
+  margin: 18px auto 26px;
+  padding: 0 14px;
+  text-align:center;
+  font-size: 12.5px;
+}
+
+/* Search: compact trên màn nhỏ */
+@media (max-width: 600px){
+  .search{ position: relative; min-width:auto; padding:6px 6px; }
+  .search input{ 
+    width: 0; opacity: 0; padding:0; margin:0; 
+    transition: width .18s ease, opacity .18s ease;
+  }
+  .search.compact-open input{
+    position:absolute; right:0; top:110%;
+    width: min(86vw, 420px);
+    opacity:1; padding:10px 12px;
+    background: var(--surface); color: var(--ink);
+    border:1px solid var(--rule); border-radius:12px;
+    box-shadow: 0 6px 22px rgba(0,0,0,.08);
+  }
+  .s-clear{ display:none !important; }  /* gọn gàng */
+}
+
+/* Header luôn dính trên cùng, nổi trên mọi thứ */
+.site-head{
+  position: sticky;   /* ở top-level nên sticky = fixed-on-scroll */
+  top: 0;
+  z-index: 1000;      /* cao hơn TOC và nội dung */
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  transition: box-shadow .18s ease, background-color .18s ease;
+}
+
+/* hiệu ứng khi trang đã cuộn (JS sẽ thêm .is-stuck) */
+.site-head.is-stuck{
+  box-shadow: 0 1px 0 var(--rule), 0 8px 28px rgba(0,0,0,.05);
+}
+
+/* tránh đè tiêu đề khi nhảy tới anchor (#...) */
+html{ scroll-padding-top: var(--head-h); }
+
+/* Header luôn cố định trên cùng */
+.site-head{
+  position: fixed;   /* thay vì sticky */
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  transition: box-shadow .18s ease, background-color .18s ease;
+}
+
+/* bóng nhẹ khi đã cuộn (JS sẽ toggle .is-stuck) */
+.site-head.is-stuck{
+  box-shadow: 0 1px 0 var(--rule), 0 8px 28px rgba(0,0,0,.05);
+}
+
+/* chừa chỗ cho header cố định */
+body{
+  padding-top: var(--head-h);   /* --head-h = chiều cao header */
+}
+
+
+/* ==== Compact header & search ==== */
+.head-inner{
+  padding: 8px 14px;        /* giảm chiều cao header */
+  gap: 10px;
+}
+
+/* Search nhỏ gọn hơn */
+.search{
+  padding: 6px 10px;        /* trước ~8px 12px */
+  min-width: 220px;         /* trước 260px */
+  border-radius: 999px;
+}
+.search input{
+  width: 160px;             /* trước 180px */
+  font-size: 14px;          /* nhỏ hơn chút */
+}
+.s-ico-btn{                 /* nút icon kính lúp */
+  width: 24px; height: 24px;
+}
+.search svg{
+  width: 16px; height: 16px;
+}
+
+/* Toggle theme gọn lại */
+.theme .track{ width: 50px; height: 24px; }
+.theme .knob{ width: 18px; height: 18px; top: 3px; left: 3px; }
+:root[data-theme="light"] .theme .knob{ transform: translateX(24px); }
+
+/* Nếu muốn header càng mỏng hơn nữa, có thể giảm logo:
+.brand .logo{ width:24px; height:24px; }
+*/
+
+/* === Mobile: search icon căn bên phải, ngay trước nút theme === */
+@media (max-width: 720px){
+  .head-inner{ flex-wrap: nowrap; }           /* tránh wrap lung tung */
+
+  /* đặt thứ tự và đẩy search sang phải */
+  .brand, .brand-path { order: 1; }
+  .spacer{ order: 2; flex: 1 1 auto; }        /* chêm khoảng trống */
+  .search{ order: 8 !important; margin-left: auto !important; flex: 0 0 auto; }
+  .theme { order: 9; }                         /* theme ở ngoài cùng bên phải */
+
+  /* trạng thái mở: giữ overlay dưới đáy header thực */
+  .search.is-open{
+    position: fixed; left: 0; right: 0;
+    top: var(--head-open-top, 60px);           /* đã có JS set height thật */
+    z-index: 1200;
+  }
+}
+
+/* === Mobile: chỉ hiện icon, KHÔNG còn khung bo tròn === */
+@media (max-width: 720px){
+  /* trạng thái ĐÓNG (mặc định) */
+  .search{
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    width: auto; min-width: 0; height: auto;
+    flex: 0 0 auto;
+  }
+  /* nếu khung từng vẽ bằng pseudo-element thì tắt luôn */
+  .search::before, .search::after{ display:none !important; }
+
+  /* chỉ giữ icon */
+  .search input,
+  .search .s-clear{ display: none !important; }
+  .search .s-ico-btn{
+    width: 34px; height: 34px;    /* vùng chạm đủ lớn */
+    background: transparent; border: 0;
+  }
+
+  /* trạng thái MỞ: bung thanh tìm kiếm đầy đủ ngay dưới header */
+  .search.is-open{
+    position: fixed; left: 0; right: 0;
+    top: var(--head-open-top, 60px);
+    z-index: 1200;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: 0 6px 16px rgba(0,0,0,.06);
+    border-radius: 0;           /* không cần bo tròn khi mở */
+  }
+  .search.is-open input{ display:block; flex:1 1 auto; min-width:0; border:0; outline:0; background:transparent; color:var(--ink); }
+  .search.is-open .s-clear{ display:inline; }
+}
+
+
+/* Mobile: chỉ icon khi đóng, hiện input khi mở */
+@media (max-width: 720px){
+  /* trạng thái đóng: chỉ icon, bỏ khung */
+  .search{
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    width: auto; min-width: 0; height: auto;
+    flex: 0 0 auto;
+  }
+  .search input,
+  .search .s-clear{ display: none !important; }
+
+  /* trạng thái MỞ: bung thanh search dưới header + HIỆN input */
+  .search.is-open{
+    position: fixed; left: 0; right: 0;
+    top: var(--head-open-top, 60px);
+    z-index: 1200;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: 0 6px 16px rgba(0,0,0,.06);
+  }
+  .search.is-open input{
+    display: block !important;   /* <- quan trọng */
+    flex: 1 1 auto; min-width: 0;
+    border: 0; outline: 0; background: transparent; color: var(--ink);
+  }
+  .search.is-open .s-clear{ display: inline !important; }
+}
+
+/* ===== Accent color (light = BLUE, dark = YELLOW) ===== */
+:root{
+  /* Light theme */
+  --accent: #2c6bcf;                 /* xanh tiêu đề/link */
+  --accent-weak: rgba(44,107,207,.12);
+  --accent-ring: rgba(44,107,207,.28);
+  --link: var(--accent);              /* link mặc định */
+}
+
+/* Dark theme */
+:root[data-theme="dark"]{
+  --accent: #f5d26b;                 /* vàng tiêu đề/link */
+  --accent-weak: rgba(245,210,107,.18);
+  --accent-ring: rgba(245,210,107,.35);
+  --link: var(--accent);
+}

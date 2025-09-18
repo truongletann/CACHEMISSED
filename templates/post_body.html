@@ -1,0 +1,17 @@
+<div class="post-wrap">
+  <aside class="toc collapsed" id="toc">
+    <div class="toc-title" id="tocTitle">{{ title }}</div>
+    <nav id="tocList"></nav>
+    <div class="toc-tools">
+      <a href="#" id="tocToggle">Expand all</a>
+      <a href="#" id="tocTop">Back to top</a>
+      <a href="#" id="tocBottom">Go to bottom</a>
+    </div>
+  </aside>
+
+  <article class="content">
+    <h1>{{ title }}</h1>
+    <div class="meta">{{ date_human }}{% if category %} • {{ category }}{% endif %}</div>
+    <div class="md" id="postBody">{{ content | safe }}</div>
+  </article>
+</div>

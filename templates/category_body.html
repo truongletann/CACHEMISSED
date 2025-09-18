@@ -1,0 +1,21 @@
+<!-- same layout as index -->
+<div class="catbar">
+  {% if pills %}
+  <nav class="pills">
+    {% for p in pills %}
+      <a class="pill{% if p.href == current_cat_href %} is-active{% endif %}" href="{{ p.href }}">{{ p.label }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+</div>
+
+<main>
+  <div id="list">
+  {% for p in posts %}
+    <article class="post" data-title="{{ p.title | e }}">
+      <div class="date">{{ p.date_human }}</div>
+      <h2><a href="{{ p.url }}">{{ p.title }}</a></h2>
+    </article>
+  {% endfor %}
+  </div>
+</main>

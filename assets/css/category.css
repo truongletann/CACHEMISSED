@@ -1,0 +1,4 @@
+/* Category kế thừa index; thêm khoảng cách nhẹ cho mobile */
+@media (max-width: 640px){
+  main{ padding-left:12px; padding-right:12px; }
+}
