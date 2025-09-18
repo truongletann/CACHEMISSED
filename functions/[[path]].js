@@ -1,53 +1,42 @@
-const ROOT = "cachemissed.lol";
-const BLOG = `blog.${ROOT}`;
-const CS   = `cs.${ROOT}`;                // << host mới
-const OLD  = `comingsoon.${ROOT}`;        // << host cũ (để 301 về host mới)
-const CONTACT = `contact.${ROOT}`;
+// functions/[[path]].js
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const host = url.hostname;
 
-function rewrite(env, request, pathname) {
-  const u = new URL(request.url);
-  u.pathname = pathname;
-  return env.ASSETS.fetch(new Request(u.toString(), request));
-}
-function passthrough(env, request) { return env.ASSETS.fetch(request); }
+    // NHÓM HOST
+    const BLOG_HOSTS    = new Set(['blog.cachemissed.lol']);
+    const CS_HOSTS      = new Set(['cachemissed.lol', 'www.cachemissed.lol', 'comingsoon.cachemissed.lol', 'cs.cachemissed.lol']);
+    const CONTACT_HOSTS = new Set(['contact.cachemissed.lol']);
 
-export async function onRequest({ request, env }) {
-  const url  = new URL(request.url);
-  const host = url.host.toLowerCase();
-  const path = url.pathname;
+    // helper: REWRITE (không đổi URL người dùng nhìn thấy)
+    const rewrite = (toPath) => {
+      const u = new URL(toPath, url.origin);
+      u.search = url.search; // giữ query nếu có
+      return fetch(new Request(u, request));
+    };
 
-  // Apex -> Coming Soon
-  if (host === ROOT || host === `www.${ROOT}`) {
-    if (path === "/" || path === "/index.html") return rewrite(env, request, "/coming-soon/");
-    return passthrough(env, request);
+    if (BLOG_HOSTS.has(host)) {
+      // Toàn bộ blog.* lấy nội dung từ /blog (không redirect)
+      const base = '/blog';
+      const p = url.pathname;
+      const toPath = (p === '/')
+        ? `${base}/`
+        : (p.startsWith(base) ? p : `${base}${p}`);
+      return rewrite(toPath);
+    }
+
+    if (CS_HOSTS.has(host)) {
+      // Các host coming-soon & apex: luôn trả /coming-soon/
+      return rewrite('/coming-soon/');
+    }
+
+    if (CONTACT_HOSTS.has(host)) {
+      return rewrite('/contact/');
+    }
+
+    // fallback: mặc định coi như blog
+    const p = url.pathname;
+    return rewrite(p.startsWith('/blog') ? p : `/blog${p}`);
   }
-
-  // Blog
-  if (host === BLOG) {
-    if (path === "/" || path === "/index.html") return rewrite(env, request, "/blog/");
-    if (!path.startsWith("/blog/")) return rewrite(env, request, "/blog" + (path.startsWith("/") ? "" : "/") + path);
-    return passthrough(env, request);
-  }
-
-  // NEW: cs.cachemissed.lol -> /coming-soon/*
-  if (host === CS) {
-    if (path === "/" || path === "/index.html") return rewrite(env, request, "/coming-soon/");
-    if (!path.startsWith("/coming-soon/")) return rewrite(env, request, "/coming-soon" + (path.startsWith("/") ? "" : "/") + path);
-    return passthrough(env, request);
-  }
-
-  // 301 migrate: comingsoon.cachemissed.lol -> cs.cachemissed.lol
-  if (host === OLD) {
-    url.host = CS;                      // đổi host sang cs.cachemissed.lol
-    return new Response(null, { status: 301, headers: { Location: url.toString() } });
-  }
-
-  // Contact (nếu có)
-  if (host === CONTACT) {
-    if (path === "/" || path === "/index.html") return rewrite(env, request, "/contact/");
-    if (!path.startsWith("/contact/")) return rewrite(env, request, "/contact" + (path.startsWith("/") ? "" : "/") + path);
-    return passthrough(env, request);
-  }
-
-  return passthrough(env, request);
 }
