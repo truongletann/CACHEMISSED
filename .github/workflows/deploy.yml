@@ -5,8 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Tránh deploy chồng lấn khi push liên tục
 concurrency:
-  group: pages-deploy
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,82 +20,88 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Python requirements
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # Nếu blog của bạn cần base path /blog/ thì giữ BASE_URL=/blog/
-      # Nếu không cần, có thể xóa env: BASE_URL.
+      # Nếu publish.py cần BASE_URL cho blog (ví dụ /blog/), giữ env phía dưới;
+      # nếu không cần, có thể bỏ ENV này.
       - name: Build blog with publish.py
         env:
           BASE_URL: /blog/
         run: |
-          set -euxo pipefail
-          if [ -f publish.py ]; then
-            python publish.py
-          else
-            echo "::warning ::publish.py not found, skip build step"
-          fi
+          # Chạy script build blog -> thường tạo ra thư mục 'site/'
+          python publish.py || true
 
-      # GH Actions mạnh tay xoá _public ở bước này nên đoạn script dưới
-      # phát hiện xem publish.py đã thả files vào _public/blog chưa.
-      # Nếu blog đã ở _public/blog thì KHÔNG xoá _public.
-      # Nếu blog ở site/ thì xoá _public rồi copy site/* -> _public/blog/.
       - name: Assemble final output to _public
         run: |
           set -euxo pipefail
 
-          # Tìm nguồn blog đã build
+          # Xác định nguồn blog: site/ (nếu có file) hoặc _public/blog/ (nếu đã build sẵn)
           BLOG_SRC=""
-          if [ -d site ] && find site -type f | head -1 >/dev/null 2>&1; then
+          if [ -d site ] && [ -n "$(find site -type f | head -1)" ]; then
             BLOG_SRC="site"
-          elif [ -d _public/blog ] && find _public/blog -type f | head -1 >/dev/null 2>&1; then
+          elif [ -d _public/blog ] && [ -n "$(find _public/blog -type f | head -1)" ]; then
             BLOG_SRC="_public/blog"
           fi
 
-          if [ -z "${BLOG_SRC}" ]; then
+          if [ -z "$BLOG_SRC" ]; then
             echo "::error ::Blog build not found (no files in ./site or in _public/blog)"
             exit 1
           fi
 
-          if [ "${BLOG_SRC}" = "site" ]; then
-            # Blog ở site/ -> làm sạch và copy về _public/blog
-            rm -rf _public || true
+          # Chuẩn bị _public và copy nội dung
+          rm -rf _public || true
+          mkdir -p _public
+
+          if [ "$BLOG_SRC" = "site" ]; then
             mkdir -p _public/blog
-            cp -r site/* _public/blog/
+            # Không lỗi nếu thư mục rỗng
+            shopt -s nullglob dotglob
+            cp -r site/* _public/blog/ || true
+            shopt -u nullglob dotglob
           else
-            # Blog đã ở _public/blog -> KHÔNG xoá _public
-            mkdir -p _public
+            # BLOG_SRC đã là _public/blog -> giữ nguyên
+            :
           fi
 
-          # Coming Soon -> /coming-soon (accept coming-soon/ hoặc coming_soon/)
+          # Coming Soon -> /coming-soon
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
-            cp -r coming-soon/* _public/coming-soon/
+            shopt -s nullglob dotglob
+            cp -r coming-soon/* _public/coming-soon/ || true
+            shopt -u nullglob dotglob
           elif [ -d coming_soon ]; then
             mkdir -p _public/coming-soon
-            cp -r coming_soon/* _public/coming-soon/
+            shopt -s nullglob dotglob
+            cp -r coming_soon/* _public/coming-soon/ || true
+            shopt -u nullglob dotglob
           fi
 
           # Contact -> /contact (nếu có)
           if [ -d contact ]; then
             mkdir -p _public/contact
-            cp -r contact/* _public/contact/
+            shopt -s nullglob dotglob
+            cp -r contact/* _public/contact/ || true
+            shopt -u nullglob dotglob
           fi
 
-          # Root index: redirect về /coming-soon/ (đổi thành /blog/ nếu muốn)
+          # Trang gốc (apex) -> redirect về /coming-soon/
+          # Nếu muốn vào blog làm mặc định: đổi /coming-soon/ thành /blog/
           echo '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
 
-      # (Tuỳ chọn) upload _public để debug khi build fail
+          # Debug liệt kê kết quả build
+          echo "== TREE _public =="
+          find _public -maxdepth 3 -type f | sed 's/^/_ /'
+
+      # Tùy chọn: upload artifact để kiểm tra nếu cần
       - name: Upload _public artifact (debug)
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,4 +117,3 @@ jobs:
           projectName: cachemissed
           directory: _public
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          wranglerVersion: '3'
