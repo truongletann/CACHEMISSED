@@ -5,7 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Tránh chạy chồng khi push liên tiếp
 concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
@@ -35,20 +34,39 @@ jobs:
         env:
           BASE_URL: /blog/
         run: |
-          python publish.py
+          set -euxo pipefail
+          python publish.py || { echo "publish.py failed"; exit 1; }
+
+      - name: Debug: show repo tree after build
+        run: |
+          echo "=== PWD ==="; pwd
+          echo "=== TOP ==="; ls -la
+          echo "=== TREE (maxdepth 2) ==="
+          find . -maxdepth 2 -type d -print
+          echo "=== site/ listing ==="
+          if [ -d site ]; then find site -maxdepth 2 -type f | sed 's/^/  /'; else echo "  (no site/)"; fi
+          echo "=== _public (pre) ==="
+          if [ -d _public ]; then find _public -maxdepth 3 -type f | sed 's/^/  /'; else echo "  (no _public yet)"; fi
 
       - name: Assemble final output to _public
         run: |
-          set -eux
+          set -euxo pipefail
           rm -rf _public
           mkdir -p _public/blog
 
-          # Blog -> /blog  (publish.py sinh ra vào ./site)
-          if [ -d site ]; then
-            rsync -a --delete site/ _public/blog/
+          # 1) Blog output: publish.py thường đổ vào ./site
+          if [ -d site ] && [ -n "$(find site -type f -maxdepth 1 -o -path 'site/*' -type f | head -1)" ]; then
+            rsync -a site/ _public/blog/
+            echo "Copied blog from ./site -> _public/blog"
+          # Trường hợp bạn đã từng sửa publish.py đổ thẳng vào _public/blog
+          elif [ -d _public/blog ] && [ -n "$(find _public/blog -type f | head -1)" ]; then
+            echo "Blog already exists in _public/blog"
+          else
+            echo "::error ::Blog build not found (no files in ./site or _public/blog)."
+            exit 1
           fi
 
-          # Coming Soon -> /coming-soon  (tự nhận coming-soon/ hoặc coming_soon/)
+          # 2) Coming Soon -> /coming-soon
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
             rsync -a coming-soon/ _public/coming-soon/
@@ -57,20 +75,19 @@ jobs:
             rsync -a coming_soon/ _public/coming-soon/
           fi
 
-          # Contact -> /contact (nếu có)
+          # 3) Contact -> /contact (nếu có)
           if [ -d contact ]; then
             mkdir -p _public/contact
             rsync -a contact/ _public/contact/
           fi
 
-          # Root: redirect về /coming-soon/ (áp dụng cho mọi host)
+          # 4) Root redirect -> /coming-soon/
           cat > _public/index.html <<'HTML'
-          <!doctype html>
-          <meta http-equiv="refresh" content="0;url=/coming-soon/">
+          <!doctype html><meta http-equiv="refresh" content="0;url=/coming-soon/">
           HTML
 
-          echo "=== _public tree ==="
-          find _public -maxdepth 2 -type f | sort
+          echo "=== _public (final) ==="
+          find _public -maxdepth 3 -type f | sort
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
