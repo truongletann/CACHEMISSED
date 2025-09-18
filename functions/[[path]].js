@@ -1,54 +1,18 @@
-// functions/[[path]].js
-// Router cho Cloudflare Pages
-
-const BLOG_HOSTS   = ['blog.cachemissed.lol'];                 // subdomain blog
-const APEX_HOST    = 'cachemissed.lol';                        // domain gốc (trang coming soon)
-const COMING_HOSTS = ['cs.cachemissed.lol', 'comingsoon.cachemissed.lol']; // nếu bạn dùng subdomain coming soon
-
 export async function onRequest(context) {
-  const req = context.request;
-  const url = new URL(req.url);
+  const url = new URL(context.request.url);
   const host = url.hostname;
-  const path = url.pathname;
 
-  // === BLOG SUBDOMAIN ===
-  if (BLOG_HOSTS.includes(host)) {
-    // 1) Nếu lỡ vào /blog hoặc /blog/... -> bóc /blog và 301 về URL sạch
-    if (path === '/blog' || path.startsWith('/blog/')) {
-      url.pathname = path.replace(/^\/blog(\/|$)/, '/');
-      return Response.redirect(url.toString(), 301);
+  // BLOG host: serve blog dưới /blog, KHÔNG đẩy về coming-soon
+  if (host === "blog.cachemissed.lol") {
+    if (url.pathname === "/" || url.pathname === "") {
+      return await context.env.ASSETS.fetch(new URL("/blog/index.html", url), context.request);
     }
-
-    // 2) Map nội bộ mọi đường dẫn của blog tới /blog/... trong asset tĩnh
-    //    - "/"  -> "/blog/index.html"
-    //    - "/feed.xml" -> "/blog/feed.xml"
-    //    - "/category/abc.html" -> "/blog/category/abc.html", v.v.
-    const mapped = path === '/' || path === ''
-      ? '/blog/index.html'
-      : `/blog${path.endsWith('/') ? `${path}index.html` : path}`;
-
-    const mappedURL = new URL(mapped, url);
-    return fetch(new Request(mappedURL.toString(), req));
+    return await context.env.ASSETS.fetch(url, context.request);
   }
 
-  // === APEX: chỉ route TRANG CHỦ sang coming-soon để tránh loop ===
-  if (host === APEX_HOST) {
-    if (path === '/' || path === '') {
-      url.pathname = '/coming-soon/';
-      return fetch(new Request(url.toString(), req));
-    }
-    return context.next();
+  // Apex & các host khác: coming-soon
+  if (url.pathname === "/" || url.pathname === "") {
+    return await context.env.ASSETS.fetch(new URL("/coming-soon/index.html", url), context.request);
   }
-
-  // === (Tuỳ chọn) Subdomain Coming Soon: trang chủ -> /coming-soon/ ===
-  if (COMING_HOSTS.includes(host)) {
-    if (path === '/' || path === '') {
-      url.pathname = '/coming-soon/';
-      return fetch(new Request(url.toString(), req));
-    }
-    return context.next();
-  }
-
-  // Mặc định: để Pages tự phục vụ asset
-  return context.next();
+  return await context.env.ASSETS.fetch(url, context.request);
 }

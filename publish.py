@@ -6,6 +6,11 @@ from pathlib import Path
 from urllib.parse import urljoin
 import frontmatter, markdown
 from slugify import slugify
+import os, pathlib
+
+# Ghi thẳng ra ./site (sau đó workflow sẽ copy -> _public/blog)
+OUTPUT_DIR = pathlib.Path("site")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ================== CẤU HÌNH ĐẦU RA ==================
 ROOT       = Path(__file__).resolve().parent

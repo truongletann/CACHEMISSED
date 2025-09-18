@@ -35,17 +35,12 @@ jobs:
           BASE_URL: /blog/
         run: |
           set -euxo pipefail
-          python publish.py || { echo "publish.py failed"; exit 1; }
-
-      - name: Debug: show repo tree after build
-        run: |
-          echo "=== PWD ==="; pwd
-          echo "=== TOP ==="; ls -la
-          echo "=== TREE (maxdepth 2) ==="
+          python publish.py
+          echo "==== AFTER publish.py ===="
           find . -maxdepth 2 -type d -print
-          echo "=== site/ listing ==="
-          if [ -d site ]; then find site -maxdepth 2 -type f | sed 's/^/  /'; else echo "  (no site/)"; fi
-          echo "=== _public (pre) ==="
+          echo "=== list site/ (nếu có) ==="
+          if [ -d site ]; then find site -maxdepth 3 -type f | sed 's/^/  /'; else echo "  (no site/)"; fi
+          echo "=== list _public (nếu có) ==="
           if [ -d _public ]; then find _public -maxdepth 3 -type f | sed 's/^/  /'; else echo "  (no _public yet)"; fi
 
       - name: Assemble final output to _public
@@ -54,19 +49,19 @@ jobs:
           rm -rf _public
           mkdir -p _public/blog
 
-          # 1) Blog output: publish.py thường đổ vào ./site
-          if [ -d site ] && [ -n "$(find site -type f -maxdepth 1 -o -path 'site/*' -type f | head -1)" ]; then
+          # Trường hợp publish.py xuất ra ./site
+          if [ -d site ] && [ -n "$(find site -type f | head -1)" ]; then
             rsync -a site/ _public/blog/
             echo "Copied blog from ./site -> _public/blog"
-          # Trường hợp bạn đã từng sửa publish.py đổ thẳng vào _public/blog
+          # Trường hợp publish.py tự ghi thẳng vào _public/blog
           elif [ -d _public/blog ] && [ -n "$(find _public/blog -type f | head -1)" ]; then
             echo "Blog already exists in _public/blog"
           else
-            echo "::error ::Blog build not found (no files in ./site or _public/blog)."
+            echo "::error ::Blog build not found (no files in ./site or in _public/blog)"
             exit 1
           fi
 
-          # 2) Coming Soon -> /coming-soon
+          # Coming Soon
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
             rsync -a coming-soon/ _public/coming-soon/
@@ -75,19 +70,26 @@ jobs:
             rsync -a coming_soon/ _public/coming-soon/
           fi
 
-          # 3) Contact -> /contact (nếu có)
+          # Contact (nếu có)
           if [ -d contact ]; then
             mkdir -p _public/contact
             rsync -a contact/ _public/contact/
           fi
 
-          # 4) Root redirect -> /coming-soon/
+          # Root redirect -> /coming-soon/
           cat > _public/index.html <<'HTML'
           <!doctype html><meta http-equiv="refresh" content="0;url=/coming-soon/">
           HTML
 
-          echo "=== _public (final) ==="
-          find _public -maxdepth 3 -type f | sort
+          echo "=== FINAL _public ==="
+          find _public -maxdepth 4 -type f | sort
+
+      - name: Upload _public artifact (debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-debug
+          path: _public
+          if-no-files-found: error
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
