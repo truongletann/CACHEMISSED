@@ -1,48 +1,64 @@
-name: Build & Deploy to Cloudflare Pages (single repo → multi-subdomains)
+name: Deploy to Cloudflare Pages
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-deploy:
+  deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install deps
+      - name: Install Python deps
         run: |
+          python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Build blog with BASE_URL=/blog/
+      - name: Build blog with publish.py
+        env:
+          BASE_URL: /blog/
         run: |
-          BASE_URL=/blog/ python publish.py
+          python publish.py
 
       - name: Assemble final output to _public
         run: |
           rm -rf _public && mkdir -p _public
-          # Coming Soon -> /coming-soon  (đặt mã nguồn tại ./coming-soon/)
-          mkdir -p _public/coming-soon
-          cp -r coming-soon/* _public/coming-soon/ 2>/dev/null || true
 
-          # Contact -> /contact (nếu có thư mục ./contact)
+          # Blog -> /blog
+          mkdir -p _public/blog
+          cp -r site/* _public/blog/ 2>/dev/null || true
+
+          # Coming Soon -> /coming-soon  (tự nhận coming-soon/ hoặc coming_soon/)
+          if [ -d coming-soon ]; then
+            mkdir -p _public/coming-soon
+            cp -r coming-soon/* _public/coming-soon/
+          elif [ -d coming_soon ]; then
+            mkdir -p _public/coming-soon
+            cp -r coming_soon/* _public/coming-soon/
+          fi
+
+          # Contact -> /contact (nếu có)
           if [ -d contact ]; then
             mkdir -p _public/contact
             cp -r contact/* _public/contact/
           fi
 
-          # Blog -> /blog  (từ site/ do publish.py tạo)
-          mkdir -p _public/blog
-          cp -r site/* _public/blog/
-
-          # (tuỳ chọn) root index: chuyển thẳng tới /coming-soon/
+          # Root: redirect về /coming-soon/
           echo '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
 
-      - name: Deploy to Cloudflare Pages (project: cachemissed)
+      - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
