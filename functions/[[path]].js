@@ -1,38 +1,42 @@
+// functions/[[path]].js
 export default {
   async fetch(request, env) {
     const url  = new URL(request.url);
     const host = url.hostname;
 
-    const serve = (path) => env.ASSETS.fetch(new Request(new URL(path, url), request));
+    const serve = (path) =>
+      env.ASSETS.fetch(new Request(new URL(path, url), request));
 
-    // blog.cachemissed.lol -> phục vụ ROOT (blog)
+    // ===== blog.cachemissed.lol -> phục vụ BLOG ở ROOT =====
     if (host === 'blog.cachemissed.lol') {
-      // giữ nguyên path, nhưng map về root
-      let p = url.pathname === '/' ? '/index.html' : url.pathname;
+      let p = url.pathname;
       if (p.endsWith('/')) p += 'index.html';
-      return serve(p);
+      if (p === '/') p = '/index.html';
+      return serve(p); // phục vụ từ root artifact
     }
 
-    // apex + comingsoon sub -> coming-soon/
+    // ===== apex & các sub comingsoon -> /coming-soon/ =====
     if (
       host === 'cachemissed.lol' ||
       host === 'www.cachemissed.lol' ||
-      host === 'comingsoon.cachemissed.lol' ||
+      host === 'comingsoon.cachemissed.lol' || // hoặc cs.cachemissed.lol
       host === 'cs.cachemissed.lol'
     ) {
-      let p = url.pathname === '/' ? '/coming-soon/index.html' : `/coming-soon${url.pathname}`;
+      let p = url.pathname;
+      if (p === '/' || p === '') p = '/index.html';
       if (p.endsWith('/')) p += 'index.html';
-      return serve(p);
+      return serve(`/coming-soon${p}`);
     }
 
-    // (tuỳ) contact sub
+    // ===== (tuỳ) contact subdomain -> /contact/ =====
     if (host === 'contact.cachemissed.lol') {
-      let p = url.pathname === '/' ? '/contact/index.html' : `/contact${url.pathname}`;
+      let p = url.pathname;
+      if (p === '/' || p === '') p = '/index.html';
       if (p.endsWith('/')) p += 'index.html';
-      return serve(p);
+      return serve(`/contact${p}`);
     }
 
-    // mặc định về blog root
+    // Fallback: trả blog root
     return serve('/index.html');
-  }
-}
+  },
+};
