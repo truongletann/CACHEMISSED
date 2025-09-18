@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_and_deploy:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,58 +19,54 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install Python deps
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # publish.py PHẢI ghi thẳng vào _public/blog/
-      - name: Build site with publish.py (writes to _public/blog)
-        env:
-          BASE_URL: /blog/
+      - name: Build blog with publish.py (base rỗng)
         run: |
-          set -euxo pipefail
+          # KHÔNG set BASE_URL=/blog/ nữa
           python publish.py
-          echo "== DEBUG: list _public/blog =="
-          (find _public/blog -maxdepth 2 -type f | sed 's/^/  /') || true
 
-      # KHÔNG XÓA _public! Chỉ thêm phần bổ sung
-      - name: Assemble static extras (do NOT delete _public)
+      - name: Assemble _public
         run: |
           set -euxo pipefail
-          test -f _public/blog/index.html || (echo "ERROR: _public/blog/index.html not found; check publish.py" && exit 1)
+          rm -rf _public && mkdir -p _public
 
-          # Copy coming-soon nếu có
+          # Blog đã được publish.py xuất ra _public/blog/*  (nếu publish.py của bạn làm khác,
+          # thì copy vào _public/blog ở đây)
+          if [ ! -d "_public/blog" ]; then
+            # Nếu publish.py xuất ra ./site/blog -> copy vào _public/blog
+            if [ -d "site/blog" ]; then
+              mkdir -p _public/blog
+              cp -r site/blog/* _public/blog/
+            fi
+          fi
+
+          # Coming soon -> _public/coming-soon
           if [ -d coming-soon ]; then
             mkdir -p _public/coming-soon
-            rsync -a coming-soon/ _public/coming-soon/
+            cp -r coming-soon/* _public/coming-soon/
+          elif [ -d coming_soon ]; then
+            mkdir -p _public/coming-soon
+            cp -r coming_soon/* _public/coming-soon/
           fi
 
-          # Copy contact nếu có
-          if [ -d contact ]; then
-            mkdir -p _public/contact
-            rsync -a contact/ _public/contact/
-          fi
+          # KHÔNG tạo _public/index.html nữa. Functions sẽ rewrite root -> /blog hoặc /coming-soon.
 
-          # Root -> /coming-soon/ (phục vụ domain apex)
-          printf '%s\n' '<meta http-equiv="refresh" content="0;url=/coming-soon/">' > _public/index.html
-
-          echo "== TREE _public =="
-          find _public -maxdepth 3 -print | sed 's/^/  /'
-
-      - name: Upload _public artifact (debug)
-        uses: actions/upload-artifact@v4
-        with:
-          name: public
-          path: _public
+      - name: Show tree (debug)
+        run: |
+          echo "==== TREE _public ===="
+          find _public -maxdepth 3 -type f | sed 's#^_public/##' | sort
 
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          apiToken:  ${{ secrets.CF_API_TOKEN }}
           projectName: cachemissed
           directory: _public
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
