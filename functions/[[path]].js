@@ -1,44 +1,49 @@
 export async function onRequest({ request }) {
   const url = new URL(request.url);
   const host = url.hostname.toLowerCase();
+  const pathname = url.pathname;
 
-  // Helper: chuyển / -> /index.html
-  const ensureIndex = (p) => (p === '/' ? '/index.html' : p);
+  // Helper trả về nội bộ /index.html cho thư mục
+  const toIndex = (p) => (p.endsWith('/') ? p + 'index.html' : p);
 
-  // ---- BLOG host ----
-  // Dùng đúng host thật của bạn:
+  // --- BLOG host: chỉ rewrite "/" -> "/blog/index.html". Không tự thêm /blog vào URL ---
   const isBlogHost =
     host === 'blog.cachemissed.lol' || host.endsWith('.blog.cachemissed.lol');
 
   if (isBlogHost) {
-    // Mọi request ở blog.* không bắt đầu bằng /blog => rewrite nội bộ sang /blog/...
-    if (!url.pathname.startsWith('/blog')) {
-      url.pathname = '/blog' + ensureIndex(url.pathname);
+    let internalPath = pathname;
+    if (pathname === '/') {
+      internalPath = '/blog/index.html';
+    } else if (pathname === '/blog') {
+      internalPath = '/blog/index.html';
     } else {
-      // /blog/ -> /blog/index.html
-      if (url.pathname === '/blog/') url.pathname = '/blog/index.html';
+      internalPath = toIndex(pathname);
     }
-    return fetch(new Request(url.toString(), request));
+    const target = new URL(request.url);
+    target.pathname = internalPath;
+    return fetch(new Request(target, request));
   }
 
-  // ---- COMING SOON (apex) ----
-  // Thêm các alias nếu bạn dùng (vd: cs.cachemissed.lol, comingsoon.cachemissed.lol)
-  const isComingSoonHost =
+  // --- ROOT / COMING SOON host: chỉ rewrite "/" -> "/coming-soon/index.html" ---
+  const isComingHost =
     host === 'cachemissed.lol' ||
     host === 'www.cachemissed.lol' ||
     host === 'cs.cachemissed.lol' ||
     host === 'comingsoon.cachemissed.lol';
 
-  if (isComingSoonHost) {
-    if (!url.pathname.startsWith('/coming-soon')) {
-      url.pathname = '/coming-soon' + ensureIndex(url.pathname);
+  if (isComingHost) {
+    let internalPath = pathname;
+    if (pathname === '/') {
+      internalPath = '/coming-soon/index.html';
+    } else if (pathname === '/coming-soon') {
+      internalPath = '/coming-soon/index.html';
     } else {
-      if (url.pathname === '/coming-soon/')
-        url.pathname = '/coming-soon/index.html';
+      internalPath = toIndex(pathname);
     }
-    return fetch(new Request(url.toString(), request));
+    const target = new URL(request.url);
+    target.pathname = internalPath;
+    return fetch(new Request(target, request));
   }
 
-  // Mặc định: cứ phục vụ như tĩnh
   return fetch(request);
 }
