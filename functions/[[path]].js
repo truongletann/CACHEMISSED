@@ -2,49 +2,63 @@
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
+  const host = (request.headers.get("host") || "").toLowerCase();
 
-  // 1) Ánh xạ host -> thư mục trong _public
-  const host = url.hostname.toLowerCase();
-  let base = "/blog/"; // mặc định
+  // Helper: rewrite nội bộ tới 1 path trong _public (ASSETS) mà không redirect
+  const rewriteTo = (pathname) => {
+    const u = new URL(request.url);
+    u.pathname = pathname;
+    // Giữ nguyên phương thức/headers… khi gọi ASSETS
+    return env.ASSETS.fetch(new Request(u.toString(), request));
+  };
 
+  // Trả thẳng asset theo path hiện tại (mặc định)
+  const passThrough = () => env.ASSETS.fetch(request);
+
+  // --- Routing theo hostname ---
+  // 1) Apex domain -> show Coming Soon (thư mục _public/coming-soon/)
   if (host === "cachemissed.lol" || host === "www.cachemissed.lol") {
-    base = "/coming-soon/";
-  } else if (host === "blog.cachemissed.lol") {
-    base = "/blog/";
-  } else if (host === "cs.cachemissed.lol") {
-    base = "/coming-soon/";
-  } else if (host === "contact.cachemissed.lol") {
-    base = "/contact/";
-  }
-
-  // 2) Ghép lại đường dẫn tĩnh cần lấy trong _public
-  //    - giữ nguyên phần path sau domain
-  //    - nếu / thì trả index.html
-  let subPath = url.pathname.replace(/^\/+/, ""); // bỏ dấu / đầu
-  let pathname = base + subPath;
-  if (pathname.endsWith("/")) pathname += "index.html";
-  if (base && (url.pathname === "" || url.pathname === "/")) pathname = base + "index.html";
-
-  // 3) Fetch từ binding ASSETS của Pages
-  try {
-    const assetURL = new URL(request.url);
-    assetURL.pathname = pathname;
-
-    // Bảo toàn method/headers/body của request gốc
-    const newReq = new Request(assetURL.toString(), request);
-    let res = await env.ASSETS.fetch(newReq);
-
-    // 404 -> thử fallback index.html của base (SPA hoặc thư mục thiếu index)
-    if (res.status === 404) {
-      assetURL.pathname = base + "index.html";
-      res = await env.ASSETS.fetch(new Request(assetURL.toString(), request));
+    // / -> /coming-soon/ (rewrite nội bộ – KHÔNG redirect)
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return rewriteTo("/coming-soon/");
     }
-    return res;
-  } catch (err) {
-    // Nếu lỗi (gây 1101), trả text để không văng Worker
-    return new Response(
-      "Functions error:\n" + (err && err.stack ? err.stack : String(err)),
-      { status: 500, headers: { "Content-Type": "text/plain" } }
-    );
+    // Cho phép truy cập trực tiếp các asset của coming-soon
+    if (url.pathname.startsWith("/coming-soon/")) {
+      return passThrough();
+    }
+    // Các trang khác (favicon, robots …) cứ để ASSETS xử lý
+    return passThrough();
   }
+
+  // 2) blog.* -> phục vụ từ thư mục /blog
+  if (host.startsWith("blog.")) {
+    // Map /... trên subdomain về /blog/...
+    if (url.pathname === "/") return rewriteTo("/blog/");
+    // Nếu chưa có prefix /blog, thêm vào
+    if (!url.pathname.startsWith("/blog/")) {
+      return rewriteTo("/blog" + (url.pathname.startsWith("/") ? "" : "/") + url.pathname);
+    }
+    return passThrough();
+  }
+
+  // 3) comingsoon.* -> phục vụ từ thư mục /coming-soon
+  if (host.startsWith("comingsoon.")) {
+    if (url.pathname === "/") return rewriteTo("/coming-soon/");
+    if (!url.pathname.startsWith("/coming-soon/")) {
+      return rewriteTo("/coming-soon" + (url.pathname.startsWith("/") ? "" : "/") + url.pathname);
+    }
+    return passThrough();
+  }
+
+  // 4) contact.* -> phục vụ từ thư mục /contact (nếu bạn có)
+  if (host.startsWith("contact.")) {
+    if (url.pathname === "/") return rewriteTo("/contact/");
+    if (!url.pathname.startsWith("/contact/")) {
+      return rewriteTo("/contact" + (url.pathname.startsWith("/") ? "" : "/") + url.pathname);
+    }
+    return passThrough();
+  }
+
+  // Mặc định: trả asset bình thường
+  return passThrough();
 }
