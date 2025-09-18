@@ -1,41 +1,40 @@
 export default {
   async fetch(request, env) {
-    const url  = new URL(request.url);
+    const url = new URL(request.url);
     const host = url.hostname;
 
-    const serve = (path) =>
-      env.ASSETS.fetch(new Request(new URL(path, url), request));
+    // Map host -> thư mục con trong _public
+    const map = {
+      'blog.cachemissed.lol': '/blog',
+      'cachemissed.lol': '/coming-soon',
+      'www.cachemissed.lol': '/coming-soon',
+      'comingsoon.cachemissed.lol': '/coming-soon',
+      'cs.cachemissed.lol': '/coming-soon',
+      'contact.cachemissed.lol': '/contact',
+    };
 
-    // ===== blog.cachemissed.lol -> phục vụ nội dung trong /blog =====
-    if (host === 'blog.cachemissed.lol') {
-      let p = url.pathname;
-      if (p === '/' || p === '') p = '/index.html';
-      if (p.endsWith('/')) p += 'index.html';
-      return serve(`/blog${p}`);   // <— quan trọng: prepend /blog
+    // Mặc định (host lạ): cho về blog
+    const base = map[host] ?? '/blog';
+
+    // Chuẩn hóa đường dẫn
+    let p = url.pathname;
+    if (p === '' || p === '/') p = '/index.html';
+    if (p.endsWith('/')) p += 'index.html';
+
+    // Đường dẫn asset thực sự trong _public
+    const assetPath = `${base}${p}`;
+
+    // Trả đúng file
+    const res = await env.ASSETS.fetch(
+      new Request(new URL(assetPath, url), request)
+    );
+
+    // Nếu lỡ không có file (404) thì trả trang index của section
+    if (res.status === 404) {
+      return env.ASSETS.fetch(
+        new Request(new URL(`${base}/index.html`, url), request)
+      );
     }
-
-    // ===== apex & coming soon subdomain -> /coming-soon =====
-    if (
-      host === 'cachemissed.lol' ||
-      host === 'www.cachemissed.lol' ||
-      host === 'comingsoon.cachemissed.lol' ||
-      host === 'cs.cachemissed.lol'
-    ) {
-      let p = url.pathname;
-      if (p === '/' || p === '') p = '/index.html';
-      if (p.endsWith('/')) p += 'index.html';
-      return serve(`/coming-soon${p}`);
-    }
-
-    // ===== (tuỳ) contact subdomain -> /contact =====
-    if (host === 'contact.cachemissed.lol') {
-      let p = url.pathname;
-      if (p === '/' || p === '') p = '/index.html';
-      if (p.endsWith('/')) p += 'index.html';
-      return serve(`/contact${p}`);
-    }
-
-    // Fallback: trả blog trang chủ
-    return serve('/blog/index.html');
+    return res;
   },
 };
