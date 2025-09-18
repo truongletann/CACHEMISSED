@@ -1,19 +1,50 @@
-// Route theo hostname → subpath trong cùng 1 build
+// functions/[[path]].js
 export async function onRequest(context) {
-  const url = new URL(context.request.url);
-  const host = url.hostname.toLowerCase();
+  const { request, env } = context;
+  const url = new URL(request.url);
 
-  if (host.startsWith('blog.')) {
-    url.pathname = '/blog' + (url.pathname === '/' ? '/' : url.pathname);
-  } else if (host.startsWith('comingsoon.') || host.startsWith('coming-soon.')) {
-    url.pathname = '/coming-soon' + (url.pathname === '/' ? '/' : url.pathname);
-  } else if (host.startsWith('contact.')) {
-    url.pathname = '/contact' + (url.pathname === '/' ? '/' : url.pathname);
-  } else {
-    // Apex: cachemissed.lol → Coming Soon (đổi nếu muốn)
-    url.pathname = '/coming-soon' + (url.pathname === '/' ? '/' : url.pathname);
+  // 1) Ánh xạ host -> thư mục trong _public
+  const host = url.hostname.toLowerCase();
+  let base = "/blog/"; // mặc định
+
+  if (host === "cachemissed.lol" || host === "www.cachemissed.lol") {
+    base = "/coming-soon/";
+  } else if (host === "blog.cachemissed.lol") {
+    base = "/blog/";
+  } else if (host === "cs.cachemissed.lol") {
+    base = "/coming-soon/";
+  } else if (host === "contact.cachemissed.lol") {
+    base = "/contact/";
   }
 
-  // Rewrite nội bộ (không đổi URL, tốt cho SEO)
-  return context.next({ request: new Request(url, context.request) });
+  // 2) Ghép lại đường dẫn tĩnh cần lấy trong _public
+  //    - giữ nguyên phần path sau domain
+  //    - nếu / thì trả index.html
+  let subPath = url.pathname.replace(/^\/+/, ""); // bỏ dấu / đầu
+  let pathname = base + subPath;
+  if (pathname.endsWith("/")) pathname += "index.html";
+  if (base && (url.pathname === "" || url.pathname === "/")) pathname = base + "index.html";
+
+  // 3) Fetch từ binding ASSETS của Pages
+  try {
+    const assetURL = new URL(request.url);
+    assetURL.pathname = pathname;
+
+    // Bảo toàn method/headers/body của request gốc
+    const newReq = new Request(assetURL.toString(), request);
+    let res = await env.ASSETS.fetch(newReq);
+
+    // 404 -> thử fallback index.html của base (SPA hoặc thư mục thiếu index)
+    if (res.status === 404) {
+      assetURL.pathname = base + "index.html";
+      res = await env.ASSETS.fetch(new Request(assetURL.toString(), request));
+    }
+    return res;
+  } catch (err) {
+    // Nếu lỗi (gây 1101), trả text để không văng Worker
+    return new Response(
+      "Functions error:\n" + (err && err.stack ? err.stack : String(err)),
+      { status: 500, headers: { "Content-Type": "text/plain" } }
+    );
+  }
 }
