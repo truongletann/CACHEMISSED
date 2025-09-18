@@ -1,47 +1,33 @@
 export async function onRequest({ request }) {
   const url = new URL(request.url);
   const host = url.hostname.toLowerCase();
-  const pathname = url.pathname;
+  const p = url.pathname;
 
-  // Helper trả về nội bộ /index.html cho thư mục
-  const toIndex = (p) => (p.endsWith('/') ? p + 'index.html' : p);
+  // helper: nếu là thư mục, dùng index.html
+  const toIndex = (x) => (x.endsWith('/') ? x + 'index.html' : x);
 
-  // --- BLOG host: chỉ rewrite "/" -> "/blog/index.html". Không tự thêm /blog vào URL ---
-  const isBlogHost =
-    host === 'blog.cachemissed.lol' || host.endsWith('.blog.cachemissed.lol');
-
-  if (isBlogHost) {
-    let internalPath = pathname;
-    if (pathname === '/') {
-      internalPath = '/blog/index.html';
-    } else if (pathname === '/blog') {
-      internalPath = '/blog/index.html';
-    } else {
-      internalPath = toIndex(pathname);
-    }
+  // BLOG host
+  if (host === 'blog.cachemissed.lol' || host.endsWith('.blog.cachemissed.lol')) {
+    let internal = p === '/' ? '/blog/index.html'
+                  : p === '/blog' ? '/blog/index.html'
+                  : toIndex(p);
     const target = new URL(request.url);
-    target.pathname = internalPath;
+    target.pathname = internal;
     return fetch(new Request(target, request));
   }
 
-  // --- ROOT / COMING SOON host: chỉ rewrite "/" -> "/coming-soon/index.html" ---
-  const isComingHost =
+  // ROOT / COMING-SOON host
+  if (
     host === 'cachemissed.lol' ||
     host === 'www.cachemissed.lol' ||
     host === 'cs.cachemissed.lol' ||
-    host === 'comingsoon.cachemissed.lol';
-
-  if (isComingHost) {
-    let internalPath = pathname;
-    if (pathname === '/') {
-      internalPath = '/coming-soon/index.html';
-    } else if (pathname === '/coming-soon') {
-      internalPath = '/coming-soon/index.html';
-    } else {
-      internalPath = toIndex(pathname);
-    }
+    host === 'comingsoon.cachemissed.lol'
+  ) {
+    let internal = p === '/' ? '/coming-soon/index.html'
+                  : p === '/coming-soon' ? '/coming-soon/index.html'
+                  : toIndex(p);
     const target = new URL(request.url);
-    target.pathname = internalPath;
+    target.pathname = internal;
     return fetch(new Request(target, request));
   }
 
