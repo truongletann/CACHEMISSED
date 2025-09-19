@@ -1,420 +1,272 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, re, json, shutil, datetime
+import os
+import re
+import json
+import shutil
+from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin
-import frontmatter, markdown
-from slugify import slugify
-import os, pathlib
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-# Ghi thẳng ra ./site (sau đó workflow sẽ copy -> _public/blog)
-OUTPUT_DIR = pathlib.Path("site")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# ============ Cấu hình cơ bản ============
+ROOT = Path(__file__).parent.resolve()
+TEMPLATES = ROOT / "templates"
+POSTS_DIR = ROOT / "posts"          # nơi chứa *.md
+ASSETS_DIR = ROOT / "assets"        # assets/css, assets/js
+IMAGES_DIR = ROOT / "images"        # nếu bạn để images riêng
+OUT = ROOT / "_public" / "blog"     # output blog
+OUT_ROOT = ROOT / "_public"         # gốc _public
+BASE_URL = os.environ.get("BASE_URL", "/")  # không cần /blog/ nữa
 
-# ================== CẤU HÌNH ĐẦU RA ==================
-ROOT       = Path(__file__).resolve().parent
-OUT_ROOT   = ROOT / "_public"              # Cloudflare Pages output
-BLOG_DIR   = OUT_ROOT / "blog"             # Blog root (được mount làm "/" nhờ Pages Functions)
-COMING_DIR = OUT_ROOT / "coming-soon"      # Coming soon site
-CONTACT_DIR= OUT_ROOT / "contact"          # (tuỳ chọn)
+# ============ Jinja env ============
+env = Environment(
+    loader=FileSystemLoader(str(TEMPLATES)),
+    autoescape=select_autoescape(["html"]),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
-# Input
-POSTS      = ROOT / "posts"
-IMAGES     = ROOT / "images"
-ASSETS     = ROOT / "assets"               # assets/css | assets/js
-TEMPLATES  = ROOT / "templates"            # index_body.html | post_body.html | category_body.html
+# ---------- Helpers ----------
 
-# Thông tin site
-BRAND      = os.environ.get("BRAND", "CacheMissed Blog")
-BASE_URL   = "/"                           # vì Pages Functions mount blog thành "/"
-YEAR_NOW   = datetime.date.today().year
+SLUG_RE = re.compile(r"[^a-z0-9\-]+")
 
-# Tạo sẵn thư mục đích
-for d in [OUT_ROOT, BLOG_DIR, COMING_DIR, CONTACT_DIR, BLOG_DIR/"posts", BLOG_DIR/"category", BLOG_DIR/"css", BLOG_DIR/"js", BLOG_DIR/"images"]:
-    d.mkdir(parents=True, exist_ok=True)
+def slugify(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"\s+", "-", s)
+    s = SLUG_RE.sub("-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s or "untitled"
 
+def human_date(dt: datetime) -> str:
+    # ví dụ "2025 Sep 06"
+    return dt.strftime("%Y %b %d")
 
-# ================== HTML SHELL (HEADER/FOOTER) ==================
-def header_html(brand_text: str, page_class: str, crumb_title: str|None=None) -> str:
-    """Header sticky, nhỏ gọn; search là icon (trên mobile giống yêu cầu)."""
-    # Breadcrumb: / [icon] Tên bài (nếu có)
-    doc_svg = """<svg class="docico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>"""
-    crumb = f'<span class="brand-path"><span class="sep">/</span> {doc_svg}<span class="crumb-txt">{crumb_title}</span></span>' if crumb_title else ""
-    return f"""
-<header class="site-head">
-  <div class="head-inner">
-    <a class="brand" href="/">
-      <img class="logo logo-light" src="/images/logo-light.png" alt="logo">
-      <img class="logo logo-dark"  src="/images/logo-dark.png"  alt="logo">
-      <span class="txt">{brand_text}</span>
-    </a>
-    {crumb}
-    <div class="spacer"></div>
+def ensure_clean_dir(p: Path):
+    if p.exists():
+        shutil.rmtree(p)
+    p.mkdir(parents=True, exist_ok=True)
 
-    <!-- search: icon-only trên màn nhỏ -->
-    <button class="s-ico-btn" id="miniSearch" aria-label="Search" title="Search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
-    </button>
+# ---------- Đọc & parse front matter ----------
+FM_START = re.compile(r"^\s*---\s*$")
+FM_END   = re.compile(r"^\s*---\s*$")
 
-    <!-- theme toggle -->
-    <button class="theme" id="themeToggle" type="button" aria-pressed="false" title="Toggle theme">
-      <span class="label label-dark">DARK</span>
-      <span class="track"><span class="knob"></span></span>
-      <span class="label label-light">LIGHT</span>
-    </button>
-  </div>
-</header>
-"""
+def parse_post_file(path: Path):
+    """
+    Parse file Markdown có front-matter YAML kiểu đơn giản:
+    ---
+    title: GYM BASE
+    date: 2025-09-06
+    pills: [aaa, bbbb, cccc]
+    slug: gym-base
+    ---
+    (markdown body …)
+    """
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
 
-def footer_html() -> str:
-    return f"""<footer class="site-foot">
-  <p>© {YEAR_NOW} CacheMissed</p>
-</footer>"""
+    meta = {}
+    body_lines = []
+    i = 0
+    if i < len(lines) and FM_START.match(lines[i]):
+        i += 1
+        # đọc meta đến --- kế
+        buf = []
+        while i < len(lines) and not FM_END.match(lines[i]):
+            buf.append(lines[i])
+            i += 1
+        # bỏ dòng '---'
+        i += 1
+        # parse YAML rất đơn giản (key: value, list dạng [a, b])
+        for ln in buf:
+            if ":" not in ln:
+                continue
+            k, v = ln.split(":", 1)
+            k = k.strip()
+            v = v.strip()
+            # list [a, b, c]
+            if v.startswith("[") and v.endswith("]"):
+                items = [x.strip() for x in v[1:-1].split(",") if x.strip()]
+                meta[k] = items
+            else:
+                meta[k] = v
+    # phần còn lại coi là body (không cần render markdown ở bản tối giản)
+    body_lines = lines[i:]
 
-def render_shell(title: str, body: str, page_class: str, canonical: str|None=None,
-                 css_name: str|None=None, js_name: str|None=None, crumb: str|None=None) -> str:
-    """Khung HTML hoàn chỉnh: chèn header/footer + CSS/JS theo trang."""
-    # css theo trang (index.css | post.css | category.css)
-    css_links = [
-        '<link rel="stylesheet" href="/css/base.css">',
-    ]
-    if css_name:
-        css_links.append(f'<link rel="stylesheet" href="/css/{css_name}">')
+    # bắt buộc title, date
+    title = meta.get("title") or path.stem
+    date_raw = (meta.get("date") or "").strip()
+    # hỗ trợ "2025-09-06" hoặc "2025/09/06"
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y %m %d"):
+        try:
+            dt = datetime.strptime(date_raw, fmt)
+            break
+        except Exception:
+            dt = None
+    if dt is None:
+        # fallback mtime file
+        dt = datetime.fromtimestamp(path.stat().st_mtime)
 
-    # js dùng chung + theo trang
-    js_links = ['<script defer src="/js/common.js"></script>']
-    if js_name:
-        js_links.append(f'<script defer src="/js/{js_name}"></script>')
+    pills = meta.get("pills") or meta.get("tags") or []
+    if isinstance(pills, str):
+        # "aaa, bbb"
+        pills = [x.strip() for x in pills.split(",") if x.strip()]
 
-    head_extra = f'<link rel="canonical" href="{canonical}">' if canonical else ""
+    slug = meta.get("slug") or slugify(title)
 
-    return f"""<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title}</title>
-{head_extra}
-{''.join(css_links)}
-</head>
-<body class="{page_class}">
-{header_html(BRAND, page_class, crumb)}
-{body}
-{footer_html()}
-{''.join(js_links)}
-</body></html>"""
+    return {
+        "title": title,
+        "date": dt,
+        "date_human": human_date(dt),
+        "pills": pills,
+        "slug": slug,
+        "url": f"{BASE_URL.rstrip('/')}/{slug}/",  # nếu sau này có trang chi tiết
+        "body": "\n".join(body_lines),
+        "source": str(path),
+    }
 
+def load_posts():
+    posts = []
+    if not POSTS_DIR.exists():
+        return posts
+    for p in sorted(POSTS_DIR.glob("*.md")):
+        posts.append(parse_post_file(p))
+    # sort desc by date
+    posts.sort(key=lambda x: x["date"], reverse=True)
+    return posts
 
-# ================== CSS BASE ==================
-# (Giữ tinh gọn; palette xanh/vàng theo yêu cầu, header sticky, footer center)
-BASE_CSS = r"""
-:root{
-  --brand:#2563eb;       /* xanh link (blue-600) */
-  --accent:#f5d26b;      /* vàng */
-  --ink:#0b1320; --muted:#6b7280; --rule:#e5e7eb; --bg:#ffffff;
-  --d-bg:#0a0a0a; --d-ink:#f5d26b; --d-muted:#9c7f2b; --d-rule:#1f2937; --d-link:#ffd166;
-  --w: clamp(640px, 86vw, 820px);
-  --head-h: 60px;
-}
-@media (prefers-color-scheme: dark){
-  :root{ --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); }
-}
-:root[data-theme="light"]{ --ink:#0b1320; --muted:#6b7280; --rule:#e5e7eb; --bg:#fff; }
-:root[data-theme="dark"]{ --ink:var(--d-ink); --muted:var(--d-muted); --rule:var(--d-rule); --bg:var(--d-bg); }
+def build_pills(posts):
+    # từ tất cả tags/pills
+    seen = {}
+    for p in posts:
+        for t in p["pills"]:
+            slug = slugify(t)
+            if slug not in seen:
+                seen[slug] = {
+                    "label": t,
+                    "slug": slug,
+                    "href": f"{BASE_URL.rstrip('/')}/category/{slug}.html",
+                }
+    pills = list(seen.values())
+    # có thể sort theo alpha
+    pills.sort(key=lambda x: x["label"].lower())
+    return pills
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif}
-a{color:#1f6feb} img{max-width:100%;height:auto}
+def group_by_category(posts):
+    cat = {}
+    for p in posts:
+        for t in p["pills"]:
+            slug = slugify(t)
+            cat.setdefault(slug, {"label": t, "slug": slug, "posts": []})
+            cat[slug]["posts"].append(p)
+    # sort mỗi group theo date desc
+    for k in cat:
+        cat[k]["posts"].sort(key=lambda x: x["date"], reverse=True)
+    return cat
 
-/* header */
-.site-head{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--rule)}
-.head-inner{max-width:1200px;margin:0 auto;padding:14px 18px;display:flex;align-items:center;gap:12px}
-.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:600;min-width:0}
-.brand .logo{width:28px;height:28px;display:block;flex:0 0 auto}
-.brand .logo-dark{display:none}
-:root[data-theme="dark"] .brand .logo-dark{display:block}
-:root[data-theme="dark"] .brand .logo-light{display:none}
-.brand .txt{display:block;max-width:30vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand-path{display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:700}
-.brand-path .crumb-txt{color:var(--ink);max-width:36vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spacer{flex:1 1 auto}
-.s-ico-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;border:0;background:transparent;cursor:pointer;color:#4c1d95}
+# ---------- Render ----------
+def render_index(posts, pills):
+    tmpl = env.get_template("index_body.html")
+    html = tmpl.render(posts=posts, pills=pills, base_url=BASE_URL)
+    (OUT / "index.html").write_text(html, encoding="utf-8")
 
-/* theme */
-.theme{display:inline-flex;align-items:center;gap:10px;border:0;background:none;cursor:pointer;padding:0}
-.theme .label{font-weight:800;letter-spacing:.08em;font-size:12px;color:var(--muted);opacity:.35;transition:opacity .25s ease,color .25s ease}
-:root[data-theme="light"] .theme .label-light{color:var(--ink);opacity:1}
-:root[data-theme="dark"]  .theme .label-dark{color:var(--ink);opacity:1}
-.theme .track{position:relative;width:58px;height:28px;border-radius:999px;background:#e9edf3;border:1px solid var(--rule)}
-.theme .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%}
-:root[data-theme="light"] .theme .knob{background:#ffd166;box-shadow:inset 0 0 0 2px rgba(0,0,0,.06);transform:translateX(28px)}
-:root[data-theme="dark"] .theme .knob{background:transparent}
-
-/* common layout */
-main{max-width:var(--w); margin:24px auto; padding:0 16px}
-h1{font-size:28px;margin:8px 0 12px}
-.hr{height:1px;background:var(--rule);margin:12px 0}
-footer.site-foot{max-width:var(--w);margin:30px auto 50px;padding:0 16px;color:var(--muted);font-size:14px;text-align:center}
-footer.site-foot p{margin:0}
-
-/* index + category: list item */
-.post{ margin:18px 0 24px; text-align:left; }
-.post .date{ color:var(--muted); font-size:13px; margin:0 0 6px; letter-spacing:.2px; }
-.post h2{ margin:0 0 8px; font-size:clamp(20px, 2.2vw + .4rem, 28px); line-height:1.3; }
-.post h2 a{ color:#1f6feb; text-decoration:none; }
-.post h2 a:hover{ text-decoration:underline; }
-@media (max-width:640px){
-  .post{ margin:14px 0 20px; }
-  .post .date{ font-size:12.5px; }
-}
-
-/* pills: trung tâm; mobile cuộn ngang */
-.catbar{max-width:var(--w);margin:10px auto 0;padding:0 16px}
-.pills{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;justify-content:center;margin:0;padding:6px 0;overflow:auto;scroll-snap-type:x proximity}
-.pill{
-  display:inline-flex;align-items:center;white-space:nowrap;scroll-snap-align:start;
-  height:36px;padding:0 14px;border-radius:999px;background:#f2f3f8;color:#111;
-  font-weight:700;font-size:13.5px;letter-spacing:.2px;box-shadow:0 1px 0 0 var(--rule) inset,0 1px 6px rgba(0,0,0,.04);
-  transition:background .15s, transform .12s, box-shadow .15s;
-}
-.pill:hover{ background:rgba(127,75,235,.10); transform:translateY(-1px); }
-.pill.is-active{ background:rgba(127,75,235,.16); box-shadow:0 0 0 2px rgba(127,75,235,.14) inset; }
-@media (max-width:680px){ .pills{flex-wrap:nowrap;justify-content:flex-start} }
-
-/* post page: TOC trái */
-.post-wrap{ max-width:1200px;margin:24px auto;padding:0 18px;display:grid;grid-template-columns:260px 1fr;gap:28px }
-.toc{ position:sticky; top:calc(var(--head-h) + 18vh); align-self:start; max-height: calc(100vh - var(--head-h) - 18vh - 20px);
-  overflow:auto; padding-left:10px; border-left:2px solid var(--rule); font-size:13px; line-height:1.35; color:var(--muted) }
-.toc .toc-title{font-weight:700;color:var(--ink);margin:0 0 6px}
-.toc a{color:var(--muted);text-decoration:none}
-.toc a:hover{color:#1f6feb;text-decoration:underline}
-.toc .lvl-2{padding-left:10px}.toc .lvl-3{padding-left:18px}
-.toc-tools{margin-top:8px;border-top:1px solid var(--rule);padding-top:8px;display:flex;flex-direction:column;gap:6px}
-.toc-tools a{color:var(--muted);text-decoration:none;font-size:12.5px}
-@media (max-width:1024px){ .post-wrap{display:block} .toc{border:0;border-top:1px solid var(--rule);padding:10px 0;max-width:var(--w);margin:0 auto 12px} }
-
-/* dark mode moon icon bold */
-:root[data-theme="dark"] .theme .knob::after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);
-  background-repeat:no-repeat;background-position:center;background-size:20px 20px;filter: drop-shadow(0 0 1px rgba(0,0,0,.45));
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23f5d26b' stroke='%23000000' stroke-width='1.6'/></svg>");}
-"""
-
-
-# ================== TIỆN ÍCH ==================
-def read_text(p: Path) -> str:
-    return p.read_text(encoding="utf-8") if p.exists() else ""
-
-def write_text(p: Path, s: str):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(s, encoding="utf-8")
-
-def copy_tree(src: Path, dst: Path):
-    if not src.exists(): return
-    for p in src.rglob("*"):
-        if p.is_file():
-            rel = p.relative_to(src)
-            (dst/rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, dst/rel)
-
-def parse_date(meta_date, name_hint: str) -> datetime.date:
-    if meta_date:
-        return datetime.date.fromisoformat(str(meta_date)[:10])
-    m = re.search(r"(\d{4})[-_](\d{2})[-_](\d{2})", name_hint)
-    if m:
-        y,mo,d = map(int,m.groups()); return datetime.date(y,mo,d)
-    return datetime.date.today()
-
-def human(d: datetime.date) -> str:
-    return d.strftime("%Y %b %d")
-
-def collect_categories(meta) -> list[str]:
-    cats=[]
-    if meta.get("category"): cats.append(str(meta["category"]))
-    if meta.get("categories"):
-        c = meta["categories"]
-        if isinstance(c, str): cats.append(c)
-        else: cats.extend([str(x) for x in c])
-    return [x.strip() for x in cats if str(x).strip()]
-
-
-# ================== RENDER TỪ TEMPLATES ==================
-# body templates (không gồm <html>…>)
-TPL_INDEX_BODY    = read_text(TEMPLATES/"index_body.html")
-TPL_POST_BODY     = read_text(TEMPLATES/"post_body.html")
-TPL_CATEGORY_BODY = read_text(TEMPLATES/"category_body.html")
-
-def render_index_body(posts: list[dict], pills: list[dict]) -> str:
-    """Dùng template index_body.html (có placeholder {{...}} kiểu rất đơn giản)."""
-    # Thay bằng render thủ công cho chắc (tránh phụ thuộc jinja). Template có các marker:
-    # {{PILLS}} -> HTML các pill
-    # {{POSTS}} -> HTML list bài
-    pill_html = "".join([f'<a class="pill" href="{p["href"]}">{p["label"]}</a>' for p in pills])
-    posts_html = "".join([
-        f'<article class="post"><div class="date">{e["date_human"]}</div>'
-        f'<h2><a href="{e["url"]}">{e["title"]}</a></h2></article>'
-        for e in posts
-    ])
-    body = TPL_INDEX_BODY
-    body = body.replace("{{PILLS}}", pill_html)
-    body = body.replace("{{POSTS}}", posts_html)
-    return body
-
-def render_post_body(title: str, date_human: str, category: str|None, content_html: str) -> str:
-    body = TPL_POST_BODY
-    body = body.replace("{{TITLE}}", title)
-    body = body.replace("{{DATE_HUMAN}}", date_human)
-    body = body.replace("{{CATEGORY}}", category or "")
-    body = body.replace("{{CONTENT}}", content_html)
-    return body
-
-def render_category_body(cat_name: str, posts: list[dict], pills: list[dict]) -> str:
-    pill_html  = "".join([f'<a class="pill" href="{p["href"]}">{p["label"]}</a>' for p in pills])
-    posts_html = "".join([
-        f'<article class="post"><div class="date">{e["date_human"]}</div>'
-        f'<h2><a href="{e["url"]}">{e["title"]}</a></h2></article>'
-        for e in posts
-    ])
-    body = TPL_CATEGORY_BODY
-    body = body.replace("{{CAT_NAME}}", cat_name)
-    body = body.replace("{{PILLS}}", pill_html)
-    body = body.replace("{{POSTS}}", posts_html)
-    return body
-
-
-# ================== BUILD BLOG ==================
-def build_assets():
-    # CSS/JS từ assets → BLOG_DIR
-    write_text(BLOG_DIR/"css"/"base.css", BASE_CSS)
-    copy_tree(ASSETS/"css", BLOG_DIR/"css")
-    copy_tree(ASSETS/"js",  BLOG_DIR/"js")
-    # images → BLOG_DIR/images
-    copy_tree(IMAGES, BLOG_DIR/"images")
-
-def render_post(md_path: Path, entries: list, cats_map: dict):
-    fm = frontmatter.load(md_path)
-    html = markdown.markdown(fm.content, extensions=["extra","toc","tables","codehilite"])
-    title = fm.get("title") or md_path.stem.replace("-"," ").title()
-    d = parse_date(fm.get("date"), md_path.as_posix())
-    date_human = human(d)
-    slug = fm.get("slug") or slugify(md_path.stem)
-    out = BLOG_DIR/"posts"/f"{slug}.html"
-    cats = collect_categories(fm.metadata)
-    main_cat = cats[0] if cats else None
-    post_url = f"/posts/{out.name}"
-
-    # add vào map
-    for c in cats:
-        cats_map.setdefault(c, []).append({"title":title, "date":d, "date_human":date_human, "url":post_url})
-
-    # body & shell
-    body = render_post_body(title, date_human, main_cat, html)
-    page_html = render_shell(
-        title=title,
-        body=body,
-        page_class="page-post no-search",
-        canonical=urljoin(BASE_URL, f"posts/{out.name}"),
-        css_name="post.css",
-        js_name="post.js",
-        crumb=title
-    )
-    write_text(out, page_html)
-
-    entries.append({"title":title, "date":d, "date_human":date_human, "url":post_url, "categories":cats})
-
-def build_blog():
-    build_assets()
-    entries=[]; cats_map={}
-    # quét posts
-    for p in POSTS.rglob("*.md"):
-        render_post(p, entries, cats_map)
-
-    # sort mới nhất
-    entries.sort(key=lambda x:x["date"], reverse=True)
-
-    # pills theo category
-    unique_cats = sorted({c for e in entries for c in e["categories"]}) if entries else []
-    pills = [{"href": f"/category/{slugify(c)}.html", "label": c} for c in unique_cats]
-
-    # index
-    index_body = render_index_body(entries, pills)
-    index_html = render_shell(
-        title=BRAND,
-        body=index_body,
-        page_class="page-index",
-        css_name="index.css",
-        js_name="index.js"
-    )
-    write_text(BLOG_DIR/"index.html", index_html)
-
-    # category pages
-    for cat, posts in cats_map.items():
-        posts.sort(key=lambda x:x["date"], reverse=True)
-        body = render_category_body(cat, posts, pills)
-        html = render_shell(
-            title=cat,
-            body=body,
-            page_class="page-category",
-            css_name="category.css",
-            js_name="category.js"
+def render_category_pages(cats, pills):
+    tmpl = env.get_template("category_body.html")
+    cat_dir = OUT / "category"
+    cat_dir.mkdir(parents=True, exist_ok=True)
+    for slug, c in cats.items():
+        html = tmpl.render(
+            category={"label": c["label"], "slug": c["slug"]},
+            posts=c["posts"],
+            pills=pills,
+            base_url=BASE_URL,
         )
-        write_text(BLOG_DIR/"category"/f"{slugify(cat)}.html", html)
+        (cat_dir / f"{slug}.html").write_text(html, encoding="utf-8")
 
-    # RSS (50 bài)
-    items=[]
-    for e in entries[:50]:
-        items.append(f"""<item>
-  <title><![CDATA[{e['title']}]]></title>
-  <link>{e['url']}</link>
-  <guid isPermaLink="false">{e['url']}</guid>
-  <pubDate>{e['date'].strftime('%a, %d %b %Y 00:00:00 +0000')}</pubDate>
-</item>""")
-    feed=f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel>
-<title>{BRAND}</title><link>{BASE_URL}</link><description>RSS</description>
-{''.join(items)}
-</channel></rss>"""
-    write_text(BLOG_DIR/"feed.xml", feed.strip())
+# ---------- Copy assets ----------
+def copy_assets():
+    # css/js
+    if ASSETS_DIR.exists():
+        for sub in ("css", "js"):
+            s = ASSETS_DIR / sub
+            if s.exists():
+                d = OUT / sub
+                if d.exists():
+                    shutil.rmtree(d)
+                shutil.copytree(s, d)
+    # images (nếu bạn để riêng)
+    if IMAGES_DIR.exists():
+        d = OUT / "images"
+        if d.exists():
+            shutil.rmtree(d)
+        shutil.copytree(IMAGES_DIR, d)
 
-    # sitemap + index.json
-    urls=[BASE_URL] + [e["url"] for e in entries]
-    urls += [f"/category/{slugify(c)}.html" for c in cats_map.keys()]
-    sm=["<?xml version='1.0' encoding='UTF-8'?>","<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
-    for u in urls: sm.append(f"<url><loc>{u}</loc></url>")
-    sm.append("</urlset>")
-    write_text(BLOG_DIR/"sitemap.xml", "\n".join(sm))
+# ---------- Coming soon ----------
+def copy_coming_soon():
+    src = None
+    if (ROOT / "coming-soon" / "index.html").exists():
+        src = ROOT / "coming-soon" / "index.html"
+    elif (ROOT / "coming_soon" / "index.html").exists():
+        src = ROOT / "coming_soon" / "index.html"
 
-    write_text(BLOG_DIR/"index.json", json.dumps([
-        {"title":e["title"],"date":e["date"].isoformat(),"url":e["url"],"categories":e["categories"]} for e in entries
-    ], ensure_ascii=False, indent=2))
+    if src:
+        dst_dir = OUT_ROOT / "coming-soon"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst_dir / "index.html")
 
-    print(f"[BLOG] {len(entries)} post(s), {len(cats_map)} category page(s) → {BLOG_DIR}")
-
-
-# ================== BUILD COMING-SOON & CONTACT ==================
-def build_coming_soon():
-    src = ROOT/"coming-soon"/"index.html"
-    if src.exists():
-        shutil.copy2(src, COMING_DIR/"index.html")
-        print(f"[COMING] Copied → {COMING_DIR/'index.html'}")
-
-def build_contact():
-    src = ROOT/"contact"/"index.html"
-    if src.exists():
-        shutil.copy2(src, CONTACT_DIR/"index.html")
-        print(f"[CONTACT] Copied → {CONTACT_DIR/'index.html'}")
+# ---------- Sanity check ----------
+def sanity_no_jinja(path: Path):
+    s = path.read_text(encoding="utf-8")
+    if "{{" in s or "{%" in s:
+        # tránh f-string để khỏi phải escape {{ }}
+        raise SystemExit(
+            "ERROR: {} còn template markers ({{ hoặc {%)".format(path)
+        )
 
 
-# ================== MAIN ==================
+# ---------- Entry ----------
 def main():
-    build_blog()
-    build_coming_soon()
-    build_contact()
-    print(f"✅ Built to {OUT_ROOT}")
+    # reset output
+    ensure_clean_dir(OUT)
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+
+    posts = load_posts()
+    pills = build_pills(posts)
+    cats = group_by_category(posts)
+
+    render_index(posts, pills)
+    render_category_pages(cats, pills)
+
+    copy_assets()
+    copy_coming_soon()
+
+    # sanity
+    sanity_no_jinja(OUT / "index.html")
+    for f in (OUT / "category").glob("*.html"):
+        sanity_no_jinja(f)
+
+    # (tùy chọn) ghi index.json / sitemap / feed nếu muốn
+    # (để gọn, mình chỉ xuất index.json cho nhanh)
+    (OUT / "index.json").write_text(
+        json.dumps(
+            [
+                {
+                    "title": p["title"],
+                    "date": p["date"].strftime("%Y-%m-%d"),
+                    "slug": p["slug"],
+                    "url": p["url"],
+                    "pills": p["pills"],
+                }
+                for p in posts
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    print(f"[BLOG] Built -> {OUT}")
+    print("[COMING] copied if exists -> _public/coming-soon/index.html")
 
 if __name__ == "__main__":
     main()
