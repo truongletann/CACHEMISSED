@@ -21,76 +21,32 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install deps
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # KHÔNG set BASE_URL=/blog/ để link không lộ /blog
-      - name: Build blog with publish.py
+      # Build trực tiếp vào _public (publish.py của bạn cần làm việc này)
+      - name: Build with publish.py
+        env:
+          BASE_URL: /
         run: |
-          set -euxo pipefail
-          # dọn sạch trước khi build
-          rm -rf _public site || true
+          set -euo pipefail
+          rm -rf _public
           python publish.py
-          echo "==== DEBUG after publish.py ===="
-          ( [ -d _public ] && find _public -maxdepth 2 -type f | sed 's#^_public/##' | sort ) || true
-          ( [ -d site    ] && find site    -maxdepth 2 -type f | sed 's#^site/##'    | sort ) || true
 
-      - name: Assemble _public (normalize outputs)
-        run: |
-          set -euxo pipefail
+          # Các file bắt buộc phải có
+          test -f _public/blog/index.html
+          test -f _public/coming-soon/index.html
 
-          # Nếu blog đã đúng chỗ: _public/blog -> OK
-          if [ -d "_public/blog" ]; then
-            echo "Blog already in _public/blog"
-
-          # Nếu publish.py đổ blog THẲNG vào _public (có index.html ở gốc)
-          elif [ -f "_public/index.html" ]; then
-            echo "Blog seems to be at _public root, moving into _public/blog"
-            mkdir -p _public_blog_tmp
-            shopt -s dotglob
-            for f in _public/*; do
-              base="$(basename "$f")"
-              # đừng đụng vào các thư mục non-blog nếu đã có
-              if [ "$base" != "coming-soon" ] && [ "$base" != "contact" ]; then
-                mv "$f" _public_blog_tmp/
-              fi
-            done
-            mkdir -p _public/blog
-            mv _public_blog_tmp/* _public/blog/
-            rmdir _public_blog_tmp
-
-          # Nếu blog nằm ở site/blog (một số publish.py cũ)
-          elif [ -d "site/blog" ]; then
-            echo "Copying blog from site/blog to _public/blog"
-            mkdir -p _public/blog
-            cp -r site/blog/* _public/blog/
-
-          else
-            echo "ERROR: Blog build not found" >&2
-            exit 1
-          fi
-
-          # Copy Coming Soon vào _public/coming-soon
-          if [ -d "coming-soon" ]; then
-            mkdir -p _public/coming-soon
-            cp -r coming-soon/* _public/coming-soon/
-          elif [ -d "coming_soon" ]; then
-            mkdir -p _public/coming-soon
-            cp -r coming_soon/* _public/coming-soon/
-          fi
-
-      - name: TREE _public (debug)
-        run: |
-          echo "==== TREE _public ===="
-          find _public -maxdepth 3 -type f | sed 's#^_public/##' | sort
+          echo '== Sanity check: không được còn marker Jinja trong index.html =='
+          ! grep -qE '\{\{|{%' _public/blog/index.html || (echo "ERROR: blog/index.html còn template markers"; exit 1)
 
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          apiToken:  ${{ secrets.CF_API_TOKEN }}
           projectName: cachemissed
           directory: _public
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
