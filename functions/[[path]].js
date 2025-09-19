@@ -1,41 +1,58 @@
 // functions/[[path]].js
-export async function onRequest(ctx) {
+export async function onRequest(context) {
   try {
-    const req = ctx.request;
-    const url = new URL(req.url);
+    const { request, next, env } = context;
+    const url = new URL(request.url);
     const host = url.hostname.toLowerCase();
+    let path = url.pathname;
 
-    // helper: nếu là thư mục thì thêm index.html
-    const toIndex = (p) => (p.endsWith('/') ? p + 'index.html' : p);
+    // Helper: phục vụ file tĩnh trong Pages.
+    // Trên Pages mới, env.ASSETS có thể không tồn tại -> fallback sang fetch().
+    const serve = (assetPath) => {
+      // Chuẩn hoá: thêm index.html nếu kết thúc bởi "/"
+      const finalPath =
+        assetPath.endsWith('/') ? `${assetPath}index.html` : assetPath;
 
+      const req = new Request(new URL(finalPath, url), request);
+      return env && env.ASSETS ? env.ASSETS.fetch(req) : fetch(req);
+    };
+
+    // ==========================
+    // blog.cachemissed.lol  -> map /blog/* ra gốc
+    // ==========================
     if (host === 'blog.cachemissed.lol') {
-      // /  -> /blog/index.html ; còn lại giữ nguyên (nhưng thêm index.html nếu cần)
-      url.pathname = (url.pathname === '/' || url.pathname === '/blog')
-        ? '/blog/index.html'
-        : toIndex(url.pathname);
-      return fetch(url.toString(), req);   // rewrite nội bộ, KHÔNG đổi URL hiển thị
+      // Nếu truy cập gốc -> trả blog/index.html (không redirect để khỏi lộ /blog)
+      if (path === '/' || path === '/index.html') {
+        return serve('/blog/index.html');
+      }
+
+      // Nếu người dùng gõ một path bất kỳ KHÔNG nằm dưới /blog
+      // -> rewrite sang /blog/<path>
+      if (!path.startsWith('/blog/')) {
+        return serve(`/blog${path}`);
+      }
+
+      // Đã là /blog/* rồi thì cứ để engine tĩnh xử lý
+      return next();
     }
 
-    // apex & coming-soon host
-    if (
-      host === 'cachemissed.lol' ||
-      host === 'www.cachemissed.lol' ||
-      host === 'comingsoon.cachemissed.lol' ||
-      host === 'cs.cachemissed.lol'
-    ) {
-      url.pathname = (url.pathname === '/' || url.pathname === '/coming-soon')
-        ? '/coming-soon/index.html'
-        : toIndex(url.pathname);
-      return fetch(url.toString(), req);
+    // ==========================
+    // cachemissed.lol -> map /coming-soon/* ra gốc
+    // ==========================
+    if (host === 'cachemissed.lol') {
+      if (path === '/' || path === '/index.html') {
+        return serve('/coming-soon/index.html');
+      }
+      if (!path.startsWith('/coming-soon/')) {
+        return serve(`/coming-soon${path}`);
+      }
+      return next();
     }
 
-    // host khác: để mặc định
-    return fetch(req);
+    // Các host khác: trả tĩnh mặc định
+    return next();
   } catch (err) {
-    // Dập 1019: trả lỗi rõ ràng để debug
-    return new Response(
-      'Pages Function error:\n' + (err && err.stack ? err.stack : String(err)),
-      { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } }
-    );
+    // Có lỗi thì rơi về file tĩnh mặc định thay vì 1019
+    return context.next();
   }
 }
